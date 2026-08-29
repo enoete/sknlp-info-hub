@@ -1,34 +1,48 @@
 import Link from 'next/link';
+import styles from './dashboard.module.css';
+import { getDashboardClaims, getDashboardStats } from './lib/claims';
+import DashboardClient from './DashboardClient';
 
-export default function Home() {
+export const dynamic = 'force-dynamic';
+
+export default async function DashboardPage() {
+  const [claims, stats] = await Promise.all([getDashboardClaims(), getDashboardStats()]);
+
   return (
     <main className="max-w-5xl mx-auto px-9 py-12">
-      <div className="text-xs font-bold tracking-widest uppercase text-red mb-2">
-        Official record
+      <div className={styles.topLinks}>
+        <Link href="/ask">Ask the Record →</Link>
       </div>
-      <h1 className="font-display text-4xl mb-3">SKNLP INFO HUB</h1>
-      <p className="text-muted max-w-xl mb-8">
-        This is the working starter. Pixel-accurate design reference lives at{' '}
-        <code className="font-mono text-sm">/design-reference/mockup.html</code> — open it
-        side-by-side and rebuild each view (Dashboard, Ask the Record, Opposition Watch,
-        Speakers, Calendar, Review Queue) as real components backed by{' '}
-        <code className="font-mono text-sm">schema.sql</code>. See{' '}
-        <code className="font-mono text-sm">CLAUDE.md</code> for full project context.
-      </p>
-      <p className="mb-8">
-        <Link href="/ask" className="text-red font-semibold underline">
-          Try &ldquo;Ask the Record&rdquo; →
-        </Link>
-      </p>
-      <div className="grid grid-cols-4 gap-3">
-        {['113 accomplishments', '412 sources', '18 opposition claims', '4 years covered'].map(
-          (label) => (
-            <div key={label} className="bg-paper border border-line rounded p-4">
-              <div className="text-xs text-muted font-semibold">{label}</div>
-            </div>
-          )
-        )}
+
+      <div className={styles.pageHead}>
+        <div className={styles.eyebrow}>Official record</div>
+        <h1>WHAT&apos;S ACTUALLY BEEN DONE</h1>
+        <p>
+          Every entry here links to a press release, a government notice, a speech, or a document
+          the party has uploaded. No entry, no claim — filter by year or sector below.
+        </p>
       </div>
+
+      <div className={styles.statRow}>
+        <div className={styles.statCard}>
+          <div className={styles.num}>{stats.accomplishments}</div>
+          <div className={styles.label}>Documented accomplishments</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.num}>{stats.sourcesIndexed}</div>
+          <div className={styles.label}>Source documents indexed</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.num}>{stats.oppositionClaims}</div>
+          <div className={styles.label}>Opposition claims cross-checked</div>
+        </div>
+        <div className={styles.statCard}>
+          <div className={styles.num}>{stats.yearsLabel}</div>
+          <div className={styles.label}>Years covered</div>
+        </div>
+      </div>
+
+      <DashboardClient claims={claims} />
     </main>
   );
 }
