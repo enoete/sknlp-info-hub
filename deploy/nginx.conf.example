@@ -1,12 +1,15 @@
 # /etc/nginx/sites-available/sknlphub.tekii.org
 # ln -s to /etc/nginx/sites-enabled/, then: certbot --nginx -d sknlphub.tekii.org
+#
+# Proxies to 3004, not 3000 — 3000 is already used by another app (kash)
+# on this shared droplet. Must match APP_HOST_PORT in .env.local.
 
 server {
     listen 80;
     server_name sknlphub.tekii.org;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3004;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

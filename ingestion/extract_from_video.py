@@ -52,6 +52,8 @@ CATEGORIES = [
     "Security", "Tourism", "Energy", "Social Protection", "Governance", "Other"
 ]
 
+SENTIMENTS = ["positive", "neutral", "negative", "critical"]
+
 RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -82,7 +84,7 @@ RESPONSE_SCHEMA = {
                     "start_timestamp": {"type": "string", "description": "MM:SS"},
                     "end_timestamp": {"type": "string", "description": "MM:SS"},
                     "text": {"type": "string"},
-                    "sentiment": {"type": "string", "enum": ["positive", "neutral", "negative", "critical"]}
+                    "sentiment": {"type": "string", "enum": SENTIMENTS}
                 },
                 "required": ["speaker_label", "speaker_confidence", "start_timestamp", "end_timestamp", "text", "sentiment"]
             }
@@ -101,6 +103,11 @@ RESPONSE_SCHEMA = {
                     "title": {"type": "string", "description": "Short, neutral label for the claim, under 12 words."},
                     "summary": {"type": "string", "description": "1-2 sentence paraphrase in plain language. Do not quote more than a short phrase verbatim."},
                     "category": {"type": "string", "enum": CATEGORIES},
+                    "sentiment": {
+                        "type": "string",
+                        "enum": SENTIMENTS,
+                        "description": "Tone of the claim as stated: 'positive'/'negative' for a straightforward good/bad framing, 'critical' specifically for an opposition_statement leveling criticism at the government, 'neutral' for a plain factual statement with no evaluative framing."
+                    },
                     "start_timestamp": {"type": "string", "description": "MM:SS — where this claim starts in the video"},
                     "extraction_confidence": {
                         "type": "string",
@@ -108,7 +115,7 @@ RESPONSE_SCHEMA = {
                         "description": "low if the claim is vague, ambiguous, or you're inferring rather than reading a direct statement"
                     }
                 },
-                "required": ["stance", "title", "summary", "category", "start_timestamp", "extraction_confidence"]
+                "required": ["stance", "title", "summary", "category", "sentiment", "start_timestamp", "extraction_confidence"]
             }
         }
     },
@@ -207,6 +214,7 @@ def to_review_queue_rows(extraction: dict, youtube_url: str, source_type: str) -
             "title": claim["title"],
             "summary": claim["summary"],
             "category": claim["category"],
+            "sentiment": claim["sentiment"],
             "extraction_confidence": claim["extraction_confidence"],
             "source_origin_url": youtube_url,
             "source_type": source_type,

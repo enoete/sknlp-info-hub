@@ -91,7 +91,14 @@ CREATE TABLE sources (
     raw_transcript  TEXT,
     scraped_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     checksum        TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Lets a search of "Grey-Brookes" or "PAM" surface a claim even when
+    -- those words aren't in the claim's own title/summary/category.
+    search_vector   TSVECTOR GENERATED ALWAYS AS (
+                        setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+                        setweight(to_tsvector('english', coalesce(speaker_name, '')), 'A') ||
+                        setweight(to_tsvector('english', coalesce(speaker_org, '')), 'B')
+                    ) STORED
 );
 
 -- ------------------------------------------------------------
@@ -154,8 +161,19 @@ CREATE TABLE claims (
     title           TEXT NOT NULL,
     summary         TEXT NOT NULL,
     category        TEXT,
+    sentiment       TEXT CHECK (sentiment IN ('positive','neutral','negative','critical')),
     event_date      DATE,
     year            INT,
+    -- Full-text search (no Voyage AI/embeddings key yet — this is the real
+    -- retrieval path for "Ask the Record" until embedding-based similarity
+    -- search replaces it). 'english' config is written explicitly (not
+    -- left to the default_text_search_config GUC) because that's what
+    -- makes to_tsvector() IMMUTABLE and therefore legal in a generated column.
+    search_vector   TSVECTOR GENERATED ALWAYS AS (
+                        setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+                        setweight(to_tsvector('english', coalesce(category, '')), 'B') ||
+                        setweight(to_tsvector('english', coalesce(summary, '')), 'C')
+                    ) STORED,
     extracted_by    TEXT NOT NULL DEFAULT 'llm_agent',  -- 'llm_agent', 'gemini_agent', or 'manual'
     extraction_confidence TEXT,                      -- 'high' / 'medium' / 'low', set by the ingestion agent; null for manual entries
     review_status   review_status NOT NULL DEFAULT 'pending_review',
@@ -218,6 +236,8 @@ CREATE TABLE events (
 CREATE INDEX idx_claims_year_category ON claims (year, category) WHERE review_status = 'approved';
 CREATE INDEX idx_claims_stance ON claims (stance) WHERE review_status = 'approved';
 CREATE INDEX idx_claims_embedding ON claims USING ivfflat (embedding vector_cosine_ops) WHERE review_status = 'approved';
+CREATE INDEX idx_claims_search_vector ON claims USING GIN (search_vector);
+CREATE INDEX idx_sources_search_vector ON sources USING GIN (search_vector);
 CREATE INDEX idx_registry_active ON sources_registry (tier, status) WHERE status = 'active';
 CREATE INDEX idx_segments_source ON transcript_segments (source_id);
 CREATE INDEX idx_segments_unresolved_speaker ON transcript_segments (id) WHERE speaker_id IS NULL;

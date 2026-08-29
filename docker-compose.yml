@@ -8,13 +8,22 @@
 # maps the containerized Postgres to host port 5433 by default
 # specifically to avoid clashing with it while both exist side by side —
 # switch to 5432 once the native instance is confirmed unused and stopped.
+#
+# Both host port mappings below are bound to 127.0.0.1, not 0.0.0.0 — the
+# app is meant to be reached only via nginx (which proxies to it over
+# localhost) and Postgres only via `docker exec`/an SSH tunnel, never
+# directly from the public internet. This also matters for rate limiting:
+# it's what makes nginx's X-Forwarded-For header trustworthy (see
+# app/lib/rate-limit.ts) — if the app were reachable directly, that header
+# would be client-spoofable and rate limiting for the /api/ask endpoint
+# would be defeatable.
 
 services:
   app:
     build: .
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${APP_HOST_PORT}:3000"
     env_file:
       - .env.local
     environment:
@@ -36,7 +45,7 @@ services:
       - sknlp_hub_pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     ports:
-      - "5433:5432"  # host:container — see note above on the port choice
+      - "127.0.0.1:5433:5432"  # host:container — see note above on the port choice
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sknlp_app -d sknlp_info_hub"]
       interval: 5s

@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export default function Home() {
   return (
     <main className="max-w-5xl mx-auto px-9 py-12">
@@ -12,6 +14,11 @@ export default function Home() {
         Speakers, Calendar, Review Queue) as real components backed by{' '}
         <code className="font-mono text-sm">schema.sql</code>. See{' '}
         <code className="font-mono text-sm">CLAUDE.md</code> for full project context.
+      </p>
+      <p className="mb-8">
+        <Link href="/ask" className="text-red font-semibold underline">
+          Try &ldquo;Ask the Record&rdquo; →
+        </Link>
       </p>
       <div className="grid grid-cols-4 gap-3">
         {['113 accomplishments', '412 sources', '18 opposition claims', '4 years covered'].map(
