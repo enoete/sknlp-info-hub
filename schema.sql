@@ -176,6 +176,10 @@ CREATE TABLE claims (
                     ) STORED,
     extracted_by    TEXT NOT NULL DEFAULT 'llm_agent',  -- 'llm_agent', 'gemini_agent', or 'manual'
     extraction_confidence TEXT,                      -- 'high' / 'medium' / 'low', set by the ingestion agent; null for manual entries
+    -- Plain-language "what this means for you" — deliberately written per
+    -- claim, never auto-generated from the summary. NULL means it still
+    -- needs a human/deliberate pass, not that it was skipped by design.
+    citizen_impact  TEXT,
     review_status   review_status NOT NULL DEFAULT 'pending_review',
     reviewed_by     UUID REFERENCES admin_users(id),
     reviewed_at     TIMESTAMPTZ,
