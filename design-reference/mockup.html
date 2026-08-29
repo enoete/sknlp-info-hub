@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKNLP Info Hub — Official Record (mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Semi+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F5F1;
+    --paper:#FFFFFF;
+    --paper-2:#F1EEE7;
+    --ink:#1C1A17;
+    --muted:#6B675F;
+    --faint:#9A968D;
+    --line:#E5E1D6;
+    --red:#C8102E;
+    --red-deep:#8C0F22;
+    --red-tint:rgba(200,16,46,0.09);
+    --red-ink:#A80F26;
+    --gold:#F4B400;
+    --gold-tint:rgba(244,180,0,0.16);
+    --gold-ink:#8A6200;
+    --green-tint:rgba(14,138,75,0.10);
+    --green-ink:#0E8A4B;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    line-height:1.55;
+  }
+  h1,h2,.display{
+    font-family:'Anton',sans-serif;
+    font-weight:400;
+    letter-spacing:0.01em;
+    margin:0;
+  }
+  h3,h4{font-family:'Barlow Semi Condensed',sans-serif;font-weight:600;margin:0;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:inherit;text-decoration:none;}
+  button{font-family:inherit;cursor:pointer;}
+
+  /* ---------- layout ---------- */
+  .app{display:grid;grid-template-columns:236px 1fr;min-height:100vh;}
+  .sidebar{
+    background:var(--paper);
+    color:#57534C;
+    padding:26px 16px;
+    display:flex;flex-direction:column;
+    position:sticky;top:0;height:100vh;
+    border-right:1px solid var(--line);
+    box-shadow: 1px 0 0 var(--line);
+  }
+  .wordmark{display:flex;align-items:center;gap:10px;padding:0 6px 24px;border-bottom:1px solid var(--line);margin-bottom:20px;}
+  .pin{width:32px;height:32px;border-radius:50%;border:2px solid var(--gold);background:var(--green-tint);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;transform:rotate(-8deg);}
+  .pin::after{content:'';position:absolute;bottom:-5px;left:50%;transform:translateX(-50%);width:2px;height:6px;background:var(--gold);}
+  .pin svg{width:14px;height:14px;color:var(--green-ink);}
+  .pin.contested{background:var(--red-tint);}
+  .pin.contested svg{color:var(--red-ink);}
+  .pin.large{width:66px;height:66px;border-width:3px;}
+  .pin.large svg{width:28px;height:28px;}
+  .wordmark .title{font-family:'Anton',sans-serif;font-size:18px;line-height:1;color:var(--ink);letter-spacing:0.02em;}
+  .wordmark .subtitle{font-size:10px;color:var(--red-ink);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;font-weight:600;}
+
+  .nav-group{margin-bottom:20px;}
+  .nav-label{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#9A968D;padding:0 10px 8px;font-weight:600;}
+  .nav-item{
+    display:flex;align-items:center;gap:10px;
+    padding:9px 10px;border-radius:8px;
+    color:#57534C;font-size:13.5px;font-weight:600;font-family:'Barlow Semi Condensed',sans-serif;
+    margin-bottom:2px;border:none;background:none;width:100%;text-align:left;
+  }
+  .nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:0.8;}
+  .nav-item:hover{background:var(--paper-2);color:var(--ink);}
+  .nav-item.active{background:var(--red);color:#fff;}
+  .nav-item.active svg{opacity:1;}
+
+  .sidebar-footer{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--line);font-size:11px;color:#9A968D;}
+  .sidebar-footer .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-right:6px;}
+
+  .content{padding:0;overflow-x:hidden;}
+  .topbar{
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+    padding:14px 36px;
+    display:flex;align-items:center;justify-content:space-between;gap:20px;
+  }
+  .ask-bar{
+    flex:1;max-width:560px;display:flex;align-items:center;gap:10px;
+    background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:9px 16px;
+  }
+  .ask-bar input{border:none;background:none;outline:none;font-family:inherit;font-size:13.5px;flex:1;color:var(--ink);}
+  .ask-bar input::placeholder{color:var(--faint);}
+  .ask-bar svg{width:15px;height:15px;color:var(--faint);flex-shrink:0;}
+  .topbar-meta{font-size:12px;color:var(--muted);white-space:nowrap;font-family:'Barlow Semi Condensed',sans-serif;font-weight:600;letter-spacing:0.02em;}
+
+  /* ---------- redundant top tab strip ---------- */
+  .tabstrip{
+    display:flex;gap:6px;padding:12px 36px;background:var(--paper);border-bottom:1px solid var(--line);
+    overflow-x:auto;position:sticky;top:0;z-index:6;
+  }
+  .tab-btn{
+    display:flex;align-items:center;gap:7px;white-space:nowrap;
+    padding:8px 15px;border-radius:999px;border:1px solid var(--line);background:var(--paper-2);
+    color:var(--muted);font-size:12.5px;font-weight:600;font-family:'Barlow Semi Condensed',sans-serif;letter-spacing:0.02em;
+  }
+  .tab-btn svg{width:14px;height:14px;}
+  .tab-btn:hover{border-color:var(--red);color:var(--ink);}
+  .tab-btn.active{background:var(--red);border-color:var(--red);color:#fff;}
+
+  .view{display:none;padding:32px 36px 80px;max-width:1180px;}
+  .view.active{display:block;}
+
+  /* ---------- shared components ---------- */
+  .eyebrow{display:flex;align-items:center;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--red-ink);font-weight:700;margin-bottom:10px;}
+  .eyebrow::before{content:'';display:inline-block;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:7px solid var(--red);margin-right:8px;}
+  .page-head{margin-bottom:26px;}
+  .page-head h1{font-size:34px;color:var(--ink);}
+  .page-head p{color:var(--muted);max-width:640px;margin-top:10px;font-size:14px;}
+
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;}
+  .stat-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:0 1px 2px rgba(28,26,23,0.04);}
+  .stat-card .num{font-family:'Anton',sans-serif;font-size:30px;color:var(--ink);}
+  .stat-card .label{font-size:12px;color:var(--muted);margin-top:4px;font-family:'Barlow Semi Condensed',sans-serif;font-weight:600;}
+
+  .filter-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px;align-items:center;}
+  .pill{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:600;color:var(--muted);font-family:'Barlow Semi Condensed',sans-serif;}
+  .pill.active{background:var(--red);color:#fff;border-color:var(--red);}
+  .filter-sep{width:1px;height:20px;background:var(--line);margin:0 4px;}
+
+  .claim-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+  .claim-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px;position:relative;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s;box-shadow:0 1px 2px rgba(28,26,23,0.04);}
+  .claim-card:hover{border-color:var(--red);transform:translateY(-1px);box-shadow:0 4px 14px rgba(28,26,23,0.08);}
+  .claim-card .cat{font-size:10.5px;letter-spacing:0.07em;text-transform:uppercase;color:var(--gold-ink);background:var(--gold-tint);display:inline-block;padding:3px 8px;border-radius:5px;margin-bottom:10px;font-weight:700;}
+  .claim-card h3{font-size:15.5px;font-weight:600;line-height:1.35;margin-bottom:8px;padding-right:38px;color:var(--ink);}
+  .claim-card .summary{font-size:13px;color:var(--muted);margin-bottom:12px;}
+  .claim-card .meta{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--faint);}
+  .claim-card .meta .src{display:flex;align-items:center;gap:5px;}
+  .claim-card .meta .src svg{width:12px;height:12px;}
+  .claim-card .pin{position:absolute;top:14px;right:14px;width:30px;height:30px;}
+  .claim-card .pin svg{width:13px;height:13px;}
+
+  /* claim detail */
+  .back-link{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);margin-bottom:20px;font-weight:600;font-family:'Barlow Semi Condensed',sans-serif;cursor:pointer;}
+  .back-link svg{width:14px;height:14px;}
+  .claim-detail-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:22px;}
+  .claim-detail-head h1{font-size:28px;max-width:620px;line-height:1.2;color:var(--ink);}
+  .verify-line{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--green-ink);font-weight:600;font-family:'Barlow Semi Condensed',sans-serif;}
+  .verify-line svg{width:14px;height:14px;}
+
+  .detail-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:28px;margin-top:26px;align-items:start;}
+  .card-block{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:0 1px 2px rgba(28,26,23,0.04);}
+  .card-block h4{font-size:12px;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;font-weight:700;}
+
+  .citation{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .citation:last-child{border-bottom:none;padding-bottom:0;}
+  .citation .icon{width:34px;height:34px;border-radius:8px;background:var(--paper-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .citation .icon svg{width:16px;height:16px;color:var(--muted);}
+  .citation .body{flex:1;}
+  .citation .src-title{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .citation .src-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+  .citation .ts-link{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:12px;color:var(--gold-ink);font-weight:700;background:var(--gold-tint);padding:5px 10px;border-radius:6px;font-family:'Barlow Semi Condensed',sans-serif;}
+  .citation .ts-link svg{width:12px;height:12px;}
+
+  .proof-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .proof-row:last-child{border-bottom:none;}
+  .proof-row svg{width:15px;height:15px;color:var(--muted);flex-shrink:0;}
+  .proof-row .pmeta{color:var(--faint);font-size:11.5px;margin-top:1px;}
+
+  .compare-box{border:1px dashed var(--line);border-radius:8px;padding:14px;margin-top:10px;}
+  .compare-box .opp{font-size:11.5px;color:var(--red-ink);background:var(--red-tint);display:inline-block;padding:2px 8px;border-radius:5px;margin-bottom:8px;font-weight:700;}
+  .compare-box p{font-size:13px;margin:0 0 8px;color:var(--ink);}
+  .compare-box .link-out{font-size:12px;color:var(--muted);text-decoration:underline;}
+
+  /* chat view */
+  .chat-shell{background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(28,26,23,0.05);}
+  .chat-log{padding:24px;max-height:560px;overflow-y:auto;}
+  .msg{margin-bottom:20px;max-width:80%;}
+  .msg.user{margin-left:auto;}
+  .msg .bubble{padding:11px 15px;border-radius:12px;font-size:13.5px;}
+  .msg.user .bubble{background:var(--red);color:#fff;border-bottom-right-radius:3px;}
+  .msg.bot .bubble{background:var(--paper-2);border-bottom-left-radius:3px;}
+  .msg.bot .answer-card{background:var(--paper-2);border-radius:12px;padding:14px;margin-top:4px;border:1px solid var(--line);}
+  .msg.bot .answer-card .a-title{font-weight:700;font-size:13.5px;margin-bottom:6px;color:var(--ink);font-family:'Barlow Semi Condensed',sans-serif;}
+  .msg.bot .answer-card .a-cite{display:flex;align-items:center;justify-content:space-between;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-top:10px;font-size:12px;gap:10px;}
+  .msg.bot .answer-card .a-cite .ts-link{display:inline-flex;align-items:center;gap:4px;color:var(--gold-ink);font-weight:700;flex-shrink:0;}
+  .msg.bot .answer-card .a-cite .ts-link svg{width:11px;height:11px;}
+  .no-record{border:1px dashed var(--faint);border-radius:8px;padding:12px 14px;margin-top:8px;font-size:12.5px;color:var(--muted);}
+
+  .chat-input-row{border-top:1px solid var(--line);padding:14px 20px;display:flex;gap:10px;align-items:center;}
+  .chat-input-row input{flex:1;border:1px solid var(--line);background:var(--paper-2);color:var(--ink);border-radius:999px;padding:10px 16px;font-family:inherit;font-size:13.5px;outline:none;}
+  .chat-input-row button{background:var(--red);color:#fff;border:none;border-radius:999px;padding:10px 18px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;font-family:'Barlow Semi Condensed',sans-serif;}
+  .chat-input-row button svg{width:13px;height:13px;}
+
+  .suggestion-row{display:flex;flex-wrap:wrap;gap:8px;padding:0 24px 18px;}
+  .suggestion{border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:12px;background:var(--paper-2);color:var(--muted);}
+  .suggestion:hover{border-color:var(--red);color:var(--ink);}
+
+  /* opposition */
+  .oppo-pair{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:0;margin-bottom:16px;overflow:hidden;}
+  .oppo-half{padding:18px 20px;}
+  .oppo-half.claim{border-bottom:1px solid var(--line);background:linear-gradient(180deg, rgba(217,30,54,0.10), transparent);}
+  .oppo-half.record{background:linear-gradient(180deg, rgba(58,221,138,0.08), transparent);}
+  .oppo-tag{font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .oppo-half.claim .oppo-tag{color:var(--red-ink);}
+  .oppo-half.record .oppo-tag{color:var(--green-ink);}
+  .oppo-half p{font-size:13.5px;margin:0 0 8px;color:var(--ink);}
+  .oppo-half .meta-line{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .oppo-half .meta-line a{text-decoration:underline;}
+  .oppo-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px;border-bottom:1px solid var(--line);}
+  .oppo-header .cat{font-size:10.5px;letter-spacing:0.07em;text-transform:uppercase;color:var(--gold-ink);background:var(--gold-tint);display:inline-block;padding:3px 8px;border-radius:5px;font-weight:700;}
+  .repeat-badge{font-size:11px;color:var(--muted);font-weight:600;font-family:'Barlow Semi Condensed',sans-serif;display:flex;align-items:center;gap:5px;}
+  .repeat-badge svg{width:12px;height:12px;}
+  .status-chip{font-size:10.5px;padding:3px 9px;border-radius:999px;font-weight:700;letter-spacing:0.02em;}
+  .status-chip.undocumented{background:var(--red-tint);color:var(--red-ink);}
+  .status-chip.documented{background:var(--green-tint);color:var(--green-ink);}
+  .other-citations{padding:10px 20px 16px;border-top:1px dashed var(--line);}
+  .other-citations summary{font-size:12px;color:var(--muted);cursor:pointer;font-weight:600;font-family:'Barlow Semi Condensed',sans-serif;}
+  .other-citations .oc-item{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);padding:7px 0;border-bottom:1px solid var(--line);}
+  .other-citations .oc-item:last-child{border-bottom:none;}
+  .other-citations .oc-item a{text-decoration:underline;}
+
+  /* speakers */
+  .speaker-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .speaker-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px;text-align:center;cursor:pointer;}
+  .speaker-card:hover{border-color:var(--red);}
+  .avatar{width:56px;height:56px;border-radius:50%;background:var(--paper-2);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-family:'Anton',sans-serif;font-size:17px;color:var(--ink);}
+  .speaker-card .role{font-size:12px;color:var(--muted);margin:2px 0 10px;font-family:'Barlow Semi Condensed',sans-serif;font-weight:600;}
+  .speaker-card .sstats{display:flex;justify-content:center;gap:16px;font-size:11px;color:var(--faint);border-top:1px solid var(--line);padding-top:10px;}
+  .speaker-card .sstats b{color:var(--ink);font-family:'IBM Plex Mono',monospace;display:block;font-size:13px;}
+
+  /* calendar */
+  .cal-layout{display:grid;grid-template-columns:1fr 320px;gap:24px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .cal-day-label{background:var(--paper);padding:8px;font-size:10.5px;text-align:center;color:var(--faint);font-weight:700;text-transform:uppercase;}
+  .cal-cell{background:var(--paper);min-height:78px;padding:8px;font-size:12px;color:var(--faint);}
+  .cal-cell .d{font-family:'IBM Plex Mono',monospace;}
+  .cal-cell.has-event{background:rgba(217,30,54,0.10);}
+  .cal-cell .evt{margin-top:6px;background:var(--red);color:#fff;border-radius:5px;padding:3px 6px;font-size:10.5px;line-height:1.3;font-weight:600;}
+  .upcoming-item{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:10px;}
+  .upcoming-item .date-chip{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--gold-ink);background:var(--gold-tint);display:inline-block;padding:2px 7px;border-radius:5px;margin-bottom:6px;}
+  .upcoming-item h4{font-size:13.5px;color:var(--ink);margin-bottom:2px;}
+  .upcoming-item .loc{font-size:11.5px;color:var(--muted);}
+  .subscribe-btn{width:100%;background:var(--red);color:#fff;border:none;border-radius:8px;padding:12px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;font-family:'Barlow Semi Condensed',sans-serif;}
+  .subscribe-btn svg{width:14px;height:14px;}
+
+  /* admin */
+  .queue-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;}
+  .queue-card .qmeta{display:flex;gap:8px;margin-bottom:8px;}
+  .qtag{font-size:10.5px;padding:2px 8px;border-radius:5px;font-weight:700;letter-spacing:0.03em;}
+  .qtag.official{background:var(--green-tint);color:var(--green-ink);}
+  .qtag.opposition{background:var(--red-tint);color:var(--red-ink);}
+  .qtag.pending{background:var(--gold-tint);color:var(--gold-ink);}
+  .queue-card h4{font-size:14.5px;color:var(--ink);margin-bottom:4px;}
+  .queue-card .qsrc{font-size:12px;color:var(--muted);}
+  .queue-actions{display:flex;gap:8px;flex-shrink:0;}
+  .qbtn{border:none;border-radius:7px;padding:8px 14px;font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:6px;font-family:'Barlow Semi Condensed',sans-serif;}
+  .qbtn svg{width:13px;height:13px;}
+  .qbtn.approve{background:var(--green-tint);color:var(--green-ink);}
+  .qbtn.edit{background:var(--paper-2);color:var(--ink);border:1px solid var(--line);}
+  .qbtn.reject{background:var(--red-tint);color:var(--red-ink);}
+  .audit-note{font-size:11px;color:var(--faint);margin-top:10px;display:flex;align-items:center;gap:6px;}
+  .audit-note svg{width:11px;height:11px;}
+
+  .mockup-note{background:var(--gold-tint);border:1px solid var(--gold);color:var(--gold-ink);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:22px;display:flex;align-items:center;gap:8px;font-weight:600;}
+  .mockup-note svg{width:14px;height:14px;flex-shrink:0;}
+
+  /* ---------- decorative bezier background wash ---------- */
+  .bezier-layer{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+  .bezier-layer svg{position:absolute;top:0;right:0;width:900px;height:900px;opacity:0.55;}
+  .content{position:relative;z-index:1;}
+  .sidebar{position:sticky;z-index:2;}
+
+  /* ---------- "where this came from" collapsible ---------- */
+  .source-toggle{margin-top:10px;}
+  .source-toggle summary{
+    display:inline-flex;align-items:center;gap:8px;cursor:pointer;list-style:none;
+    font-size:12px;font-weight:700;color:var(--red);font-family:'Barlow Semi Condensed',sans-serif;
+    background:var(--red-tint);padding:6px 12px;border-radius:999px;
+  }
+  .source-toggle summary::-webkit-details-marker{display:none;}
+  .source-toggle summary .count{background:var(--red);color:#fff;border-radius:999px;padding:1px 7px;font-size:10.5px;}
+  .source-toggle summary svg{width:12px;height:12px;transition:transform .15s;}
+  .source-toggle[open] summary svg{transform:rotate(180deg);}
+  .source-toggle .a-cite{margin-top:8px;}
+
+  .quick-actions{display:flex;gap:8px;align-items:center;}
+  .quick-actions .qa-icon{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--paper);
+    display:flex;align-items:center;justify-content:center;color:var(--muted);flex-shrink:0;
+  }
+  .quick-actions .qa-icon:hover{border-color:var(--red);color:var(--red);}
+  .quick-actions .qa-icon svg{width:16px;height:16px;}
+  .qa-pill{
+    display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--paper);
+    border-radius:999px;padding:0 14px;height:38px;font-size:12.5px;font-weight:700;color:var(--gold-ink);
+    font-family:'Barlow Semi Condensed',sans-serif;white-space:nowrap;
+  }
+  .qa-pill svg{width:13px;height:13px;}
+  .qa-pill:hover{border-color:var(--gold);}
+
+  @media (max-width:920px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{display:none;}
+    .detail-grid,.cal-layout{grid-template-columns:1fr;}
+    .claim-grid,.speaker-grid,.stat-row{grid-template-columns:repeat(2,1fr);}
+  }
+</style>
+</head>
+<body>
+
+<div class="bezier-layer" aria-hidden="true">
+  <svg viewBox="0 0 900 900" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="soft-blur" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="60"/>
+      </filter>
+      <linearGradient id="wash1" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#F7C9CE"/>
+        <stop offset="100%" stop-color="#F4B400"/>
+      </linearGradient>
+    </defs>
+    <path filter="url(#soft-blur)" fill="url(#wash1)" fill-opacity="0.35"
+      d="M780 60C900 140 940 320 860 460C780 600 600 640 460 600C320 560 220 440 240 300C260 160 400 40 540 40C620 40 700 20 780 60Z"/>
+    <path filter="url(#soft-blur)" fill="#C8102E" fill-opacity="0.14"
+      d="M900 300C960 420 900 560 760 600C620 640 480 560 460 440C440 320 540 200 680 180C780 166 860 220 900 300Z"/>
+  </svg>
+</div>
+
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <nav class="sidebar">
+    <div class="wordmark">
+      <div class="pin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg></div>
+      <div>
+        <div class="title">SKNLP</div>
+        <div class="subtitle">Info Hub</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Browse</div>
+      <button class="nav-item active" data-view="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Dashboard</button>
+      <button class="nav-item" data-view="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask the record</button>
+      <button class="nav-item" data-view="opposition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v18M16 3v18M3 8h5M16 8h5M3 16h5M16 16h5"/></svg>Opposition watch</button>
+      <button class="nav-item" data-view="speakers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a5 5 0 015 5v2a5 5 0 01-10 0V7a5 5 0 015-5zM4 22c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Speakers</button>
+      <button class="nav-item" data-view="calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Internal</div>
+      <button class="nav-item" data-view="admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Review queue</button>
+    </div>
+
+    <div class="sidebar-footer">
+      <span class="dot"></span>412 sources indexed &middot; last sync 6m ago
+    </div>
+  </nav>
+
+  <!-- ================= MAIN ================= -->
+  <div class="content">
+    <div class="topbar">
+      <div class="ask-bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input placeholder="Heard a claim? Search the record…" onfocus="showView('chat')">
+      </div>
+      <div class="topbar-meta" id="topbar-meta">PUBLIC ARCHIVE &middot; SOURCED &amp; DATED</div>
+    </div>
+
+    <!-- redundant top tab strip, mirrors sidebar -->
+    <div class="tabstrip">
+      <button class="tab-btn active" data-view="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Dashboard</button>
+      <button class="tab-btn" data-view="chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Ask the record</button>
+      <button class="tab-btn" data-view="opposition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v18M16 3v18M3 8h5M16 8h5M3 16h5M16 16h5"/></svg>Opposition watch</button>
+      <button class="tab-btn" data-view="speakers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2a5 5 0 015 5v2a5 5 0 01-10 0V7a5 5 0 015-5zM4 22c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Speakers</button>
+      <button class="tab-btn" data-view="calendar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Calendar</button>
+      <button class="tab-btn" data-view="admin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Review queue</button>
+    </div>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="view active" id="view-dashboard">
+      <div class="page-head">
+        <div class="eyebrow">Official record</div>
+        <h1>WHAT'S ACTUALLY BEEN DONE</h1>
+        <p>Every entry here links to a press release, a government notice, a speech, or a document the party has uploaded. No entry, no claim — filter by year or sector below.</p>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-card"><div class="num">113</div><div class="label">Documented accomplishments</div></div>
+        <div class="stat-card"><div class="num">412</div><div class="label">Source documents indexed</div></div>
+        <div class="stat-card"><div class="num">18</div><div class="label">Opposition claims cross-checked</div></div>
+        <div class="stat-card"><div class="num">4</div><div class="label">Years covered, 2022&ndash;2026</div></div>
+      </div>
+
+      <div class="filter-row">
+        <span class="pill active">All years</span>
+        <span class="pill">2026</span>
+        <span class="pill">2025</span>
+        <span class="pill">2024</span>
+        <span class="pill">2023</span>
+        <span class="pill">2022</span>
+        <div class="filter-sep"></div>
+        <span class="pill active">All sectors</span>
+        <span class="pill">Economy</span>
+        <span class="pill">Water</span>
+        <span class="pill">Healthcare</span>
+        <span class="pill">Education</span>
+        <span class="pill">Housing</span>
+      </div>
+
+      <div class="claim-grid" id="claim-grid"></div>
+    </section>
+
+    <!-- ============ CLAIM DETAIL ============ -->
+    <section class="view" id="view-detail">
+      <div class="back-link" onclick="showView('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Back to dashboard
+      </div>
+      <div id="detail-body"></div>
+    </section>
+
+    <!-- ============ CHAT ============ -->
+    <section class="view" id="view-chat">
+      <div class="page-head">
+        <div class="eyebrow">Ask the record</div>
+        <h1>VERIFY ANYTHING YOU'VE HEARD</h1>
+        <p>This isn't a neutral opinion — it's an index. It only answers from documented, dated sources, and says so plainly when nothing's on file.</p>
+      </div>
+
+      <div class="chat-shell">
+        <div class="chat-log" id="chat-log">
+          <div class="msg user"><div class="bubble">I heard someone say the minimum wage never actually changed. Is that true?</div></div>
+          <div class="msg bot">
+            <div class="answer-card">
+              <div class="a-title">Minimum wage increased EC$360 → EC$500/week</div>
+              <p style="margin:0;font-size:13px;color:var(--muted)">Documented as a formal policy change, effective under the current administration — the highest minimum wage in the OECS at time of announcement.</p>
+              <details class="source-toggle">
+                <summary><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>Where this came from<span class="count">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></summary>
+                <div class="a-cite">
+                  <span>Budget address, Ministry of Finance &middot; sknis.gov.kn</span>
+                  <a class="ts-link" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Read source</a>
+                </div>
+                <div class="a-cite">
+                  <span>Budget address speech &middot; YouTube, 41:12</span>
+                  <a class="ts-link" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>Watch at 41:12</a>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="msg user"><div class="bubble">Did they build the new hospital yet?</div></div>
+          <div class="msg bot">
+            <div class="answer-card">
+              <div class="a-title">Build a modern JNF General Hospital</div>
+              <p style="margin:0;font-size:13px;color:var(--muted)">Planning is documented — location determination is the current phase. No record yet of construction start or completion.</p>
+              <div class="no-record">Not yet documented as complete. Current status on file: <b style="color:var(--ink)">Determine location</b> phase, updated Oct 2023. This isn't a denial that work is happening — it just means completion isn't in the record yet.</div>
+            </div>
+          </div>
+        </div>
+        <div class="suggestion-row">
+          <span class="suggestion">Did they really reduce homicides?</span>
+          <span class="suggestion">What's the status of the new MRI facility?</span>
+          <span class="suggestion">Show me every water project since 2022</span>
+        </div>
+        <div class="chat-input-row">
+          <input placeholder="Ask about anything you've heard…">
+          <div class="quick-actions">
+            <button class="qa-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>Explain simply</button>
+            <button class="qa-icon" title="Voice input"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg></button>
+          </div>
+          <button>Search record <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ OPPOSITION WATCH ============ -->
+    <section class="view" id="view-opposition">
+      <div class="page-head">
+        <div class="eyebrow">Opposition watch</div>
+        <h1>CLAIM, MEET RECORD</h1>
+        <p>Statements made publicly against the party, shown next to the closest matching documented record. No verdicts — just both, side by side, sourced. Repeated claims are grouped into one thread, not duplicated.</p>
+      </div>
+
+      <div class="ask-bar" style="max-width:100%;margin-bottom:16px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input placeholder="Search what's been said against the party…">
+      </div>
+
+      <div class="filter-row">
+        <span class="pill active" data-status="all" onclick="filterOppo('status','all',this)">All statuses</span>
+        <span class="pill" data-status="undocumented" onclick="filterOppo('status','undocumented',this)">No record yet</span>
+        <span class="pill" data-status="documented" onclick="filterOppo('status','documented',this)">Documented</span>
+        <div class="filter-sep"></div>
+        <span class="pill active" data-cat="all" onclick="filterOppo('cat','all',this)">All sectors</span>
+        <span class="pill" data-cat="Water" onclick="filterOppo('cat','Water',this)">Water</span>
+        <span class="pill" data-cat="Healthcare" onclick="filterOppo('cat','Healthcare',this)">Healthcare</span>
+        <span class="pill" data-cat="Economy" onclick="filterOppo('cat','Economy',this)">Economy</span>
+        <span class="pill" data-cat="Security" onclick="filterOppo('cat','Security',this)">Security</span>
+        <div class="filter-sep"></div>
+        <span class="pill" data-sort="recent" onclick="sortOppo('recent',this)">Newest</span>
+        <span class="pill" data-sort="repeated" onclick="sortOppo('repeated',this)">Most repeated</span>
+      </div>
+
+      <div id="oppo-list"></div>
+
+      <div class="mockup-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.7 3.86a2 2 0 00-3.4 0z"/></svg>Mockup data — in production, similar statements are automatically clustered by semantic match before publishing, so repeated talking points become one thread with multiple citations, not duplicate cards.</div>
+    </section>
+
+    <!-- ============ SPEAKERS ============ -->
+    <section class="view" id="view-speakers">
+      <div class="page-head">
+        <div class="eyebrow">Voice profiles</div>
+        <h1>WHO SAID WHAT</h1>
+        <p>Every statement in the archive is attributed to a real, identified speaker using voice-matched transcription — not typed in after the fact.</p>
+      </div>
+      <div class="speaker-grid" id="speaker-grid"></div>
+    </section>
+
+    <!-- ============ CALENDAR ============ -->
+    <section class="view" id="view-calendar">
+      <div class="page-head">
+        <div class="eyebrow">Calendar</div>
+        <h1>UPCOMING, ON THE HUB</h1>
+        <p>Public events and announcements, pulled from the same sourced pipeline as everything else. Subscribe once, stay current automatically.</p>
+      </div>
+      <div class="cal-layout">
+        <div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+        <div>
+          <h4 style="font-size:11.5px;letter-spacing:0.07em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;font-weight:700;">Upcoming</h4>
+          <div class="upcoming-item">
+            <span class="date-chip">SEP 03</span>
+            <h4>Basseterre Desalination Plant — site visit</h4>
+            <div class="loc">Basseterre, St. Kitts</div>
+          </div>
+          <div class="upcoming-item">
+            <span class="date-chip">SEP 11</span>
+            <h4>Budget consultation, Nevis constituencies</h4>
+            <div class="loc">Charlestown, Nevis</div>
+          </div>
+          <div class="upcoming-item">
+            <span class="date-chip">SEP 22</span>
+            <h4>Greenhouse Village farmer briefing</h4>
+            <div class="loc">St. Paul's</div>
+          </div>
+          <button class="subscribe-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Subscribe (.ics feed)</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ADMIN REVIEW QUEUE ============ -->
+    <section class="view" id="view-admin">
+      <div class="page-head">
+        <div class="eyebrow">Internal &middot; not public</div>
+        <h1>REVIEW QUEUE</h1>
+        <p>Nothing scraped or uploaded reaches the public archive until someone approves it here. Every action is logged.</p>
+      </div>
+
+      <div class="mockup-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.7 3.86a2 2 0 00-3.4 0z"/></svg>Buttons here are visual only in this mockup — approve/reject will write to the audit log in the real build.</div>
+
+      <div class="queue-card">
+        <div>
+          <div class="qmeta"><span class="qtag official">Official</span><span class="qtag pending">Pending review</span></div>
+          <h4>New groundwater source identified in Saddlers</h4>
+          <div class="qsrc">Auto-extracted from YouTube &middot; Water Development update &middot; 18:44</div>
+          <div class="audit-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Flagged by ingestion agent 2h ago, awaiting human review</div>
+        </div>
+        <div class="queue-actions">
+          <button class="qbtn approve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Approve</button>
+          <button class="qbtn edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit</button>
+          <button class="qbtn reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>Reject</button>
+        </div>
+      </div>
+
+      <div class="queue-card">
+        <div>
+          <div class="qmeta"><span class="qtag opposition">Opposition</span><span class="qtag pending">Pending review</span></div>
+          <h4>"No progress on youth unemployment" — talk show commentary</h4>
+          <div class="qsrc">Auto-transcribed &middot; speaker match: unresolved (68% confidence)</div>
+          <div class="audit-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Low-confidence speaker match — needs manual identification before approval</div>
+        </div>
+        <div class="queue-actions">
+          <button class="qbtn approve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Approve</button>
+          <button class="qbtn edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>ID speaker</button>
+          <button class="qbtn reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>Reject</button>
+        </div>
+      </div>
+
+      <div class="queue-card">
+        <div>
+          <div class="qmeta"><span class="qtag official">Official</span><span class="qtag pending">Pending review</span></div>
+          <h4>Supporting document: signed MOU, Southern University Louisiana</h4>
+          <div class="qsrc">Admin upload &middot; PDF &middot; uploaded by comms_admin</div>
+          <div class="audit-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Document dated May 2025, uploaded Aug 2026 — both dates will show on the record</div>
+        </div>
+        <div class="queue-actions">
+          <button class="qbtn approve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>Approve</button>
+          <button class="qbtn edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit</button>
+          <button class="qbtn reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>Reject</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+function showView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===name));
+  document.querySelectorAll('.tab-btn').forEach(n=>n.classList.toggle('active', n.dataset.view===name));
+  const meta = {
+    dashboard:"PUBLIC ARCHIVE · SOURCED & DATED",
+    detail:"CLAIM DETAIL · FULL CITATION TRAIL",
+    chat:"RETRIEVAL ONLY · CITES OR SAYS \u201cNOT ON FILE\u201d",
+    opposition:"CLAIM VS. RECORD · NO VERDICTS RENDERED",
+    speakers:"VOICE-MATCHED ATTRIBUTION",
+    calendar:"SAME SOURCING PIPELINE AS THE ARCHIVE",
+    admin:"INTERNAL · HUMAN APPROVAL REQUIRED"
+  };
+  document.getElementById('topbar-meta').textContent = meta[name] || '';
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.nav-item, .tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>showView(btn.dataset.view));
+});
+
+const claims = [
+  {cat:"Economy", title:"Minimum wage increased to EC$500/week", summary:"Highest minimum wage in the OECS, up from EC$360.", date:"2025", src:"Budget address · sknis.gov.kn", contested:false,
+    citations:[
+      {icon:"doc", title:"Budget Address 2025", meta:"sknis.gov.kn · Ministry of Finance · Feb 2025", link:"#"},
+      {icon:"video", title:"Budget address speech", meta:"YouTube · @StKittsNevisLabourParty", ts:"41:12", link:"#"}
+    ],
+    proof:[{name:"Gazette notice — wage order",meta:"PDF · uploaded Mar 2025"}],
+    related:{text:"\u201cThe minimum wage increase is just words, workers still can't make ends meet.\u201d", src:"Opposition press statement, Mar 2025"}
+  },
+  {cat:"Water", title:"24-hour water access up to ~70% of population", summary:"Increased from approximately 24% at start of term.", date:"2026", src:"Ministry of Infrastructure report", contested:true,
+    citations:[
+      {icon:"doc", title:"Infrastructure progress report", meta:"sknis.gov.kn · Aug 2026", link:"#"},
+      {icon:"video", title:"Water Development sector update", meta:"YouTube · @StKittsNevisLabourParty", ts:"18:44", link:"#"}
+    ],
+    proof:[{name:"Basseterre Aquifer commissioning photos",meta:"JPG set · uploaded Jun 2026"}],
+    related:{text:"\u201cFour years and there's still no real progress on 24-hour water.\u201d", src:"Radio call-in show, Aug 14 2026"}
+  },
+  {cat:"Healthcare", title:"National ambulance fleet: 2 → 9", summary:"Fleet expansion documented across two procurement cycles.", date:"2024", src:"Ministry of Health procurement record", contested:false,
+    citations:[{icon:"doc", title:"Procurement notice", meta:"sknis.gov.kn · Ministry of Health · Nov 2024", link:"#"}],
+    proof:[{name:"Fleet handover ceremony photos",meta:"JPG set · uploaded Dec 2024"}],
+    related:null
+  },
+  {cat:"Housing", title:"900+ affordable homes under construction", summary:"Across St. Peter's, Ottley's, and Gillard Meadows developments.", date:"2025", src:"National Housing Corporation report", contested:false,
+    citations:[{icon:"doc", title:"NHC quarterly report", meta:"sknis.gov.kn · Q3 2025", link:"#"}],
+    proof:[{name:"Site progress photos, 3 developments",meta:"JPG set · uploaded Sep 2025"}],
+    related:null
+  },
+  {cat:"Healthcare", title:"Build a modern JNF General Hospital", summary:"Planning phase — site location determination in progress.", date:"in progress", src:"Project tracker", contested:true,
+    citations:[{icon:"doc", title:"Capital projects tracker", meta:"Internal record, published extract", ts:null, link:"#"}],
+    proof:[],
+    related:{text:"\u201cThey keep talking about the new hospital, but nothing has broken ground.\u201d", src:"Opposition press conference, Jul 2 2026"}
+  },
+  {cat:"Security", title:"Homicides reduced approximately 76%", summary:"One of the lowest homicide levels in over two decades.", date:"2026", src:"Royal St. Christopher & Nevis Police Force report", contested:false,
+    citations:[{icon:"doc", title:"Annual crime statistics", meta:"sknis.gov.kn · Jan 2026", link:"#"},{icon:"video", title:"National security press briefing", meta:"YouTube · @StKittsNevisLabourParty", ts:"05:20", link:"#"}],
+    proof:[],
+    related:null
+  }
+];
+
+const oppoClaims = [
+  {cat:"Water", status:"documented", date:"2026-08-14",
+    text:"Four years and there's still no real progress on 24-hour water for most people.",
+    primarySrc:{name:"Radio call-in show \u00b7 host commentary", when:"Aug 14, 2026", link:"listen \u00b7 6:02"},
+    otherSrc:[
+      {name:"Opposition Facebook post", when:"Jun 2, 2026", link:"view post"},
+      {name:"Constituency town hall Q&A", when:"Mar 20, 2026", link:"watch \u00b7 12:04"}
+    ],
+    record:{text:"24-hour water availability increased from ~24% to 70% of the population, per Ministry infrastructure report.", src:"Ministry of Public Infrastructure", when:"progress report, 2026", link:"view source"}
+  },
+  {cat:"Healthcare", status:"undocumented", date:"2026-07-02",
+    text:"They keep talking about the new hospital, but nothing has actually broken ground.",
+    primarySrc:{name:"Opposition press conference", when:"Jul 2, 2026", link:"watch \u00b7 3:45"},
+    otherSrc:[],
+    record:{text:"Site location determination is the current recorded phase. No completion or groundbreaking is on file yet \u2014 this statement lines up with the documented status.", src:"Project tracker", when:"updated Oct 28, 2023", link:"view source", partial:true}
+  },
+  {cat:"Economy", status:"documented", date:"2026-05-11",
+    text:"The minimum wage increase is just words, workers still can't make ends meet.",
+    primarySrc:{name:"Opposition press statement", when:"Mar 2025", link:"read release"},
+    otherSrc:[
+      {name:"Radio call-in show", when:"May 11, 2026", link:"listen \u00b7 2:18"}
+    ],
+    record:{text:"Minimum wage formally increased from EC$360 to EC$500/week \u2014 highest in the OECS at time of announcement.", src:"Budget Address 2025, Ministry of Finance", when:"sknis.gov.kn, Feb 2025", link:"view source"}
+  },
+  {cat:"Security", status:"undocumented", date:"2026-04-30",
+    text:"Crime numbers are being manipulated to look better than they really are.",
+    primarySrc:{name:"Talk show commentary", when:"Apr 30, 2026", link:"listen \u00b7 9:10"},
+    otherSrc:[],
+    record:null
+  }
+];
+
+let oppoFilters = { status:'all', cat:'all', sort:'recent' };
+
+function filterOppo(kind, value, el){
+  oppoFilters[kind] = value;
+  document.querySelectorAll(`.pill[data-${kind}]`).forEach(p=>p.classList.toggle('active', p===el));
+  renderOppo();
+}
+function sortOppo(value, el){
+  oppoFilters.sort = value;
+  document.querySelectorAll('.pill[data-sort]').forEach(p=>p.classList.toggle('active', p===el));
+  renderOppo();
+}
+
+function renderOppo(){
+  let list = oppoClaims.filter(o=>
+    (oppoFilters.status==='all' || o.status===oppoFilters.status) &&
+    (oppoFilters.cat==='all' || o.cat===oppoFilters.cat)
+  );
+  if(oppoFilters.sort==='repeated'){
+    list = list.slice().sort((a,b)=>(b.otherSrc.length)-(a.otherSrc.length));
+  } else {
+    list = list.slice().sort((a,b)=> new Date(b.date)-new Date(a.date));
+  }
+
+  document.getElementById('oppo-list').innerHTML = list.map(o=>`
+    <div class="oppo-pair">
+      <div class="oppo-header">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="cat">${o.cat}</span>
+          <span class="status-chip ${o.status}">${o.status==='documented'?'Documented':'No record yet'}</span>
+        </div>
+        <div class="repeat-badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg>Raised ${o.otherSrc.length+1} time${o.otherSrc.length?'s':''}</div>
+      </div>
+      <div class="oppo-half claim">
+        <div class="oppo-tag"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v18M16 3v18"/></svg>Opposition statement</div>
+        <p>"${o.text}"</p>
+        <div class="meta-line">${o.primarySrc.name} &middot; <span class="mono">${o.primarySrc.when}</span> &middot; <a href="#">${o.primarySrc.link}</a></div>
+      </div>
+      ${o.record ? `
+      <div class="oppo-half record">
+        <div class="oppo-tag"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${o.record.partial? '<path d="M12 8v4l3 3M12 22a10 10 0 100-20 10 10 0 000 20z"/>' : '<path d="M5 13l4 4L19 7"/>'}</svg>${o.record.partial? 'Documented status: in progress, not complete' : 'Closest documented record'}</div>
+        <p>${o.record.text}</p>
+        <div class="meta-line">${o.record.src} &middot; <span class="mono">${o.record.when}</span> &middot; <a href="#">${o.record.link}</a></div>
+      </div>` : `
+      <div class="oppo-half" style="background:none;">
+        <div class="oppo-tag" style="color:var(--muted);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>No official record found</div>
+        <p style="color:var(--muted);">This isn't a denial \u2014 it just means nothing documented addresses this specific claim yet.</p>
+      </div>`}
+      ${o.otherSrc.length ? `
+      <details class="other-citations">
+        <summary>Also raised ${o.otherSrc.length} more time${o.otherSrc.length>1?'s':''}</summary>
+        ${o.otherSrc.map(s=>`<div class="oc-item"><span>${s.name} &middot; <span class="mono">${s.when}</span></span><a href="#">${s.link}</a></div>`).join('')}
+      </details>` : ''}
+    </div>
+  `).join('');
+}
+renderOppo();
+
+const iconSvg = {
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>',
+  video:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>'
+};
+
+function renderGrid(){
+  const grid = document.getElementById('claim-grid');
+  grid.innerHTML = claims.map((c,i)=>`
+    <div class="claim-card" onclick="openClaim(${i})">
+      <div class="pin ${c.contested?'contested':''}">${c.contested? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d=\"M12 9v4M12 17h.01\"/><circle cx=\"12\" cy=\"12\" r=\"10\"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d=\"M5 13l4 4L19 7\"/></svg>'}</div>
+      <span class="cat">${c.cat}</span>
+      <h3>${c.title}</h3>
+      <div class="summary">${c.summary}</div>
+      <div class="meta">
+        <span class="src">${iconSvg.doc} ${c.src.split(' · ')[0]}</span>
+        <span class="mono">${c.date}</span>
+      </div>
+    </div>
+  `).join('');
+}
+renderGrid();
+
+function openClaim(i){
+  const c = claims[i];
+  const body = document.getElementById('detail-body');
+  body.innerHTML = `
+    <div class="claim-detail-head">
+      <div>
+        <span class="cat">${c.cat}</span>
+        <h1>${c.title}</h1>
+        <div class="verify-line">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
+          ${c.contested ? 'Documented, and referenced in an opposition statement below' : 'Documented with '+c.citations.length+' independent source'+(c.citations.length>1?'s':'')}
+        </div>
+      </div>
+      <div class="pin large ${c.contested?'contested':''}">${c.contested? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d=\"M12 9v4M12 17h.01\"/><circle cx=\"12\" cy=\"12\" r=\"10\"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d=\"M5 13l4 4L19 7\"/></svg>'}</div>
+    </div>
+
+    <div class="detail-grid">
+      <div>
+        <div class="card-block">
+          <h4>Sources</h4>
+          ${c.citations.map(s=>`
+            <div class="citation">
+              <div class="icon">${iconSvg[s.icon]}</div>
+              <div class="body">
+                <div class="src-title">${s.title}</div>
+                <div class="src-meta">${s.meta}</div>
+                ${s.ts ? `<a class="ts-link" href="${s.link}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>Watch at ${s.ts}</a>` : `<a class="ts-link" href="${s.link}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Read source</a>`}
+              </div>
+            </div>
+          `).join('') || '<div style="font-size:13px;color:var(--muted)">No published source on file yet.</div>'}
+        </div>
+
+        ${c.related ? `
+        <div class="card-block">
+          <h4>Related opposition statement</h4>
+          <div class="compare-box">
+            <span class="opp">Opposition</span>
+            <p>${c.related.text}</p>
+            <span class="link-out">${c.related.src}</span>
+          </div>
+        </div>` : ''}
+      </div>
+
+      <div>
+        <div class="card-block">
+          <h4>Party-supplied proof</h4>
+          ${c.proof.length ? c.proof.map(p=>`
+            <div class="proof-row">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+              <div><div style="color:var(--ink)">${p.name}</div><div class="pmeta">${p.meta}</div></div>
+            </div>
+          `).join('') : '<div style="font-size:13px;color:var(--muted)">No supporting documents uploaded yet.</div>'}
+        </div>
+        <div class="card-block">
+          <h4>Record status</h4>
+          <div style="font-size:13px;color:var(--muted)">Event date on file: <b style="color:var(--ink)">${c.date}</b><br>Category: <b style="color:var(--ink)">${c.cat}</b><br>Review status: <b style="color:var(--green-ink)">Approved</b></div>
+        </div>
+      </div>
+    </div>
+  `;
+  showView('detail');
+}
+
+const speakers = [
+  {initials:"PM", role:"Prime Minister's Office", stmts:86, conf:"98", org:"official"},
+  {initials:"MoF", role:"Ministry of Finance", stmts:34, conf:"96", org:"official"},
+  {initials:"MoH", role:"Ministry of Health", stmts:29, conf:"95", org:"official"},
+  {initials:"MSD", role:"Ministry of Sustainable Development", stmts:41, conf:"97", org:"official"},
+  {initials:"OS", role:"Opposition spokesperson", stmts:22, conf:"91", org:"opposition"},
+  {initials:"RH", role:"Radio talk show host", stmts:15, conf:"84", org:"opposition"}
+];
+function renderSpeakers(){
+  document.getElementById('speaker-grid').innerHTML = speakers.map(s=>`
+    <div class="speaker-card">
+      <div class="avatar">${s.initials}</div>
+      <div style="font-weight:600;font-size:14px;color:var(--ink);font-family:'Barlow Semi Condensed',sans-serif;">${s.role}</div>
+      <div class="role">${s.org==='official' ? 'Government / party' : 'Opposition'}</div>
+      <div class="sstats">
+        <div><b>${s.stmts}</b>statements</div>
+        <div><b class="mono">${s.conf}%</b>voice match</div>
+      </div>
+    </div>
+  `).join('');
+}
+renderSpeakers();
+
+function renderCalendar(){
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const eventDays = {3:"Site visit",11:"Consultation",22:"Briefing"};
+  let html = days.map(d=>`<div class="cal-day-label">${d}</div>`).join('');
+  const leadBlanks = 1;
+  for(let i=0;i<leadBlanks;i++) html += `<div class="cal-cell"></div>`;
+  for(let d=1; d<=30; d++){
+    const has = eventDays[d];
+    html += `<div class="cal-cell ${has?'has-event':''}"><span class="d">${d}</span>${has?`<div class="evt">${has}</div>`:''}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+}
+renderCalendar();
+</script>
+</body>
+</html>

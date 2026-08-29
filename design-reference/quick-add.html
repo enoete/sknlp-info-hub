@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKNLP Info Hub — Quick Add</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Semi+Condensed:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F5F1; --paper:#FFFFFF; --paper-2:#F1EEE7; --ink:#1C1A17;
+    --muted:#6B675F; --line:#E5E1D6; --red:#C8102E; --red-tint:rgba(200,16,46,0.08);
+    --gold:#F4B400; --gold-ink:#8A6200; --gold-tint:rgba(244,180,0,0.14);
+    --green-ink:#0E8A4B; --green-tint:rgba(14,138,75,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;font-size:14.5px;line-height:1.5;}
+  h1{font-family:'Anton',sans-serif;font-weight:400;font-size:26px;margin:0;}
+  h2{font-family:'Barlow Semi Condensed',sans-serif;font-weight:700;font-size:15px;margin:0 0 14px;color:var(--muted);letter-spacing:0.03em;text-transform:uppercase;}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 24px 80px;}
+  header{margin-bottom:24px;}
+  header .eyebrow{font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--red);font-weight:700;margin-bottom:6px;}
+  header p{color:var(--muted);max-width:640px;margin:8px 0 0;}
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:20px;}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;font-family:'Barlow Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:0.02em;}
+  input[type=text], input[type=date], input[type=url], select, textarea{
+    width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-family:inherit;font-size:13.5px;
+    background:var(--bg);color:var(--ink);
+  }
+  textarea{resize:vertical;min-height:56px;}
+  .radio-group{display:flex;gap:8px;flex-wrap:wrap;}
+  .radio-group label{
+    display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:7px 14px;
+    font-size:12.5px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0;cursor:pointer;background:var(--bg);
+  }
+  .radio-group input{margin:0;}
+  .radio-group label.checked{border-color:var(--red);background:var(--red-tint);}
+  .link-preview{margin-top:8px;font-size:12.5px;}
+  .link-preview a{color:var(--gold-ink);font-weight:600;}
+  .link-preview .err{color:var(--muted);}
+  .field-error{color:var(--red);font-size:12px;margin-top:4px;display:none;}
+  .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:999px;padding:11px 20px;font-weight:700;font-size:13px;font-family:'Barlow Semi Condensed',sans-serif;}
+  .btn-primary{background:var(--red);color:#fff;}
+  .btn-secondary{background:var(--paper-2);color:var(--ink);border:1px solid var(--line);}
+  .btn-secondary:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .list-item{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:var(--paper);}
+  .list-item .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .list-item h3{font-size:14px;margin:0 0 4px;font-family:'Barlow Semi Condensed',sans-serif;font-weight:700;}
+  .list-item .meta{font-size:11.5px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
+  .tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:5px;text-transform:uppercase;letter-spacing:0.03em;}
+  .tag.accomplishment{background:var(--green-tint);color:var(--green-ink);}
+  .tag.opposition{background:var(--red-tint);color:var(--red);}
+  .tag.cat{background:var(--gold-tint);color:var(--gold-ink);}
+  .remove-btn{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;padding:0;}
+  .empty-state{color:var(--muted);font-size:13px;padding:20px;text-align:center;}
+  .count-badge{background:var(--red);color:#fff;border-radius:999px;padding:1px 9px;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">SKNLP Info Hub — internal tool</div>
+    <h1>Quick Add</h1>
+    <p>For manually feeding claims in before the real admin panel is built. Fill this out per source, hit "Add to list," and export when you're ready to hand the batch off. Nothing here touches a live database — this just formats what you enter so it's ready to load.</p>
+  </header>
+
+  <div class="panel">
+    <h2>New entry</h2>
+
+    <div class="row3">
+      <div>
+        <label>Stance</label>
+        <div class="radio-group" id="stance-group">
+          <label class="checked"><input type="radio" name="stance" value="accomplishment" checked> Accomplishment</label>
+          <label><input type="radio" name="stance" value="opposition_statement"> Opposition</label>
+        </div>
+      </div>
+      <div>
+        <label for="sourceType">Source type</label>
+        <select id="sourceType">
+          <option value="official_party">Official — SKNLP</option>
+          <option value="official_govt">Official — Government (SKNIS etc.)</option>
+          <option value="opposition">Opposition figure/party</option>
+          <option value="press">Press (WINN FM, Freedom FM, etc.)</option>
+        </select>
+      </div>
+      <div>
+        <label for="platform">Platform</label>
+        <select id="platform" onchange="onPlatformChange()">
+          <option value="youtube">YouTube</option>
+          <option value="facebook">Facebook (screenshot)</option>
+          <option value="news">News article</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="url">Link (paste the URL)</label>
+        <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." oninput="updatePreview()">
+      </div>
+      <div id="timestampField">
+        <label for="timestamp">Timestamp (mm:ss, if a video)</label>
+        <input type="text" id="timestamp" placeholder="e.g. 41:12" oninput="updatePreview()">
+      </div>
+    </div>
+    <div class="link-preview" id="linkPreview"></div>
+
+    <div class="row" style="margin-top:14px;">
+      <div>
+        <label for="speaker">Speaker (name or role)</label>
+        <input type="text" id="speaker" placeholder="e.g. Minister of Health, or Timothy Harris">
+      </div>
+      <div>
+        <label for="speakerTitle">Their role at the time (matters if it may change)</label>
+        <input type="text" id="speakerTitle" placeholder="e.g. PAM Leader — confirm current at time of statement">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="category">Category</label>
+        <select id="category">
+          <option>Economy</option><option>Water</option><option>Healthcare</option>
+          <option>Education</option><option>Housing</option><option>Agriculture</option>
+          <option>Security</option><option>Tourism</option><option>Energy</option>
+          <option>Social Protection</option><option>Governance</option><option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="eventDate">Event / statement date</label>
+        <input type="date" id="eventDate">
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label for="title">Claim title (short)</label>
+      <input type="text" id="title" placeholder="e.g. Minimum wage increased to EC$500/week">
+      <div class="field-error" id="titleError">This field is required.</div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label for="summary">Summary — in your own words, 1-2 sentences</label>
+      <textarea id="summary" placeholder="Plain-language summary of what was said or done. Don't copy the transcript verbatim — paraphrase."></textarea>
+      <div class="field-error" id="summaryError">This field is required.</div>
+    </div>
+
+    <div style="margin-bottom:0;">
+      <label for="notes">Notes (optional — anything the reviewer should know)</label>
+      <textarea id="notes" placeholder="e.g. screenshot attached separately, or: confirm date before publishing"></textarea>
+    </div>
+
+    <div class="actions">
+      <button class="btn-secondary" onclick="clearForm()">Clear form</button>
+      <button class="btn-primary" onclick="addEntry()">Add to list</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Batch — <span class="count-badge" id="countBadge">0</span> entries ready</h2>
+    <div id="listArea"><div class="empty-state">Nothing added yet. Entries you add above will show up here.</div></div>
+    <div class="actions" style="justify-content:flex-start;">
+      <button class="btn-secondary" id="csvBtn" onclick="exportCSV()" disabled>Export CSV</button>
+      <button class="btn-secondary" id="sqlBtn" onclick="exportSQL()" disabled>Export as SQL</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let entries = [];
+
+document.querySelectorAll('#stance-group input').forEach(r => {
+  r.addEventListener('change', () => {
+    document.querySelectorAll('#stance-group label').forEach(l => l.classList.remove('checked'));
+    r.closest('label').classList.add('checked');
+  });
+});
+
+function onPlatformChange(){
+  const p = document.getElementById('platform').value;
+  document.getElementById('timestampField').style.display = (p === 'youtube') ? 'block' : 'none';
+  updatePreview();
+}
+
+function extractYouTubeId(url){
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{6,})/);
+  return m ? m[1] : null;
+}
+function timestampToSeconds(ts){
+  const parts = ts.split(':').map(Number);
+  if (parts.some(isNaN)) return null;
+  if (parts.length === 2) return parts[0]*60 + parts[1];
+  if (parts.length === 3) return parts[0]*3600 + parts[1]*60 + parts[2];
+  return null;
+}
+
+function updatePreview(){
+  const url = document.getElementById('url').value.trim();
+  const platform = document.getElementById('platform').value;
+  const preview = document.getElementById('linkPreview');
+  if (!url){ preview.innerHTML = ''; return; }
+
+  if (platform === 'youtube'){
+    const id = extractYouTubeId(url);
+    if (!id){ preview.innerHTML = '<span class="err">Doesn\'t look like a YouTube link yet.</span>'; return; }
+    const ts = document.getElementById('timestamp').value.trim();
+    const secs = ts ? timestampToSeconds(ts) : null;
+    const deepLink = secs !== null ? `https://youtube.com/watch?v=${id}&t=${secs}s` : `https://youtube.com/watch?v=${id}`;
+    preview.innerHTML = `Deep link: <a href="${deepLink}" target="_blank" rel="noopener">${deepLink}</a>`;
+  } else {
+    preview.innerHTML = `<a href="${url}" target="_blank" rel="noopener">${url}</a>`;
+  }
+}
+
+function getStance(){
+  return document.querySelector('#stance-group input:checked').value;
+}
+
+function validate(){
+  let ok = true;
+  const title = document.getElementById('title').value.trim();
+  const summary = document.getElementById('summary').value.trim();
+  document.getElementById('titleError').style.display = title ? 'none' : 'block';
+  document.getElementById('summaryError').style.display = summary ? 'none' : 'block';
+  if (!title || !summary) ok = false;
+  return ok;
+}
+
+function addEntry(){
+  if (!validate()) return;
+
+  const platform = document.getElementById('platform').value;
+  const url = document.getElementById('url').value.trim();
+  const timestamp = document.getElementById('timestamp').value.trim();
+  const ytId = platform === 'youtube' ? extractYouTubeId(url) : null;
+  const secs = timestamp ? timestampToSeconds(timestamp) : null;
+
+  const entry = {
+    stance: getStance(),
+    sourceType: document.getElementById('sourceType').value,
+    platform: platform,
+    url: url,
+    timestamp: timestamp,
+    startSeconds: secs,
+    youtubeId: ytId,
+    speaker: document.getElementById('speaker').value.trim(),
+    speakerTitle: document.getElementById('speakerTitle').value.trim(),
+    category: document.getElementById('category').value,
+    eventDate: document.getElementById('eventDate').value,
+    title: document.getElementById('title').value.trim(),
+    summary: document.getElementById('summary').value.trim(),
+    notes: document.getElementById('notes').value.trim()
+  };
+  entries.push(entry);
+  renderList();
+  clearForm();
+}
+
+function removeEntry(i){
+  entries.splice(i, 1);
+  renderList();
+}
+
+function renderList(){
+  const area = document.getElementById('listArea');
+  document.getElementById('countBadge').textContent = entries.length;
+  document.getElementById('csvBtn').disabled = entries.length === 0;
+  document.getElementById('sqlBtn').disabled = entries.length === 0;
+
+  if (entries.length === 0){
+    area.innerHTML = '<div class="empty-state">Nothing added yet. Entries you add above will show up here.</div>';
+    return;
+  }
+  area.innerHTML = entries.map((e,i) => `
+    <div class="list-item">
+      <div class="top">
+        <div>
+          <h3>${e.title}</h3>
+          <div class="meta">
+            <span class="tag ${e.stance === 'accomplishment' ? 'accomplishment' : 'opposition'}">${e.stance === 'accomplishment' ? 'Accomplishment' : 'Opposition'}</span>
+            <span class="tag cat">${e.category}</span>
+            <span>${e.speaker || 'no speaker set'}${e.speakerTitle ? ' · '+e.speakerTitle : ''}</span>
+            <span>${e.eventDate || 'no date set'}</span>
+          </div>
+        </div>
+        <button class="remove-btn" onclick="removeEntry(${i})">Remove</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function clearForm(){
+  ['url','timestamp','speaker','speakerTitle','title','summary','notes','eventDate'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('titleError').style.display = 'none';
+  document.getElementById('summaryError').style.display = 'none';
+  document.getElementById('linkPreview').innerHTML = '';
+}
+
+function csvEscape(s){
+  if (s === null || s === undefined) return '';
+  const str = String(s);
+  return /[",\n]/.test(str) ? '"' + str.replace(/"/g,'""') + '"' : str;
+}
+
+function downloadFile(filename, content, mime){
+  const blob = new Blob([content], {type: mime});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function exportCSV(){
+  const headers = ['stance','source_type','platform','url','timestamp','event_date','category','speaker','speaker_title_at_time','title','summary','notes'];
+  const rows = entries.map(e => [e.stance, e.sourceType, e.platform, e.url, e.timestamp, e.eventDate, e.category, e.speaker, e.speakerTitle, e.title, e.summary, e.notes].map(csvEscape).join(','));
+  downloadFile('sknlp-hub-batch.csv', headers.join(',') + '\n' + rows.join('\n'), 'text/csv');
+}
+
+function sqlEscape(s){
+  if (!s) return 'NULL';
+  return "'" + String(s).replace(/'/g, "''") + "'";
+}
+
+function exportSQL(){
+  let sql = '-- Generated by SKNLP Info Hub Quick Add tool\n-- Review before running against production.\n\n';
+  entries.forEach(e => {
+    sql += `-- ${e.title}\n`;
+    sql += `INSERT INTO sources (source_type, channel, title, speaker_name, speaker_org, origin_url, published_at, video_timestamp)\n`;
+    sql += `VALUES (${sqlEscape(e.sourceType)}, ${sqlEscape(e.platform === 'youtube' ? 'youtube' : (e.platform === 'news' ? 'press_release' : 'social_post'))}, ${sqlEscape(e.title)}, ${sqlEscape(e.speaker)}, ${sqlEscape(e.speakerTitle)}, ${sqlEscape(e.url)}, ${e.eventDate ? sqlEscape(e.eventDate) : 'NULL'}, ${sqlEscape(e.timestamp)})\n`;
+    sql += `RETURNING id; -- capture this id for the claims insert below\n\n`;
+    sql += `INSERT INTO claims (stance, title, summary, category, event_date, extracted_by, review_status)\n`;
+    sql += `VALUES (${sqlEscape(e.stance)}, ${sqlEscape(e.title)}, ${sqlEscape(e.summary)}, ${sqlEscape(e.category)}, ${e.eventDate ? sqlEscape(e.eventDate) : 'NULL'}, 'manual', 'pending_review');\n`;
+    if (e.notes) sql += `-- Note: ${e.notes}\n`;
+    sql += `\n`;
+  });
+  downloadFile('sknlp-hub-batch.sql', sql, 'text/sql');
+}
+</script>
+</body>
+</html>

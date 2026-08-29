@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #F7F5F1;
+  --paper: #FFFFFF;
+  --ink: #1C1A17;
+  --muted: #6B675F;
+  --line: #E5E1D6;
+  --red: #C8102E;
+  --gold: #F4B400;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* Decorative bezier wash — reusable behind hero/chat sections.
+   Keep opacity low; this sits behind content, never competes with it. */
+.bezier-wash {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}

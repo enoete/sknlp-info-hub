@@ -1,0 +1,58 @@
+# Matches the rest of the droplet's containerized setup.
+# Two services: the app itself, and Postgres with pgvector pre-built in
+# (the pgvector/pgvector image is maintained by the extension's own
+# project — no manual extension install needed).
+#
+# Before running: confirm nothing else on the droplet depends on the
+# native Postgres on port 5432 before disabling it. This compose file
+# maps the containerized Postgres to host port 5433 by default
+# specifically to avoid clashing with it while both exist side by side —
+# switch to 5432 once the native instance is confirmed unused and stopped.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      DATABASE_URL: postgresql://sknlp_app:${DB_PASSWORD}@db:5432/sknlp_info_hub
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sknlp_hub_net
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sknlp_info_hub
+      POSTGRES_USER: sknlp_app
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - sknlp_hub_pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5433:5432"  # host:container — see note above on the port choice
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sknlp_app -d sknlp_info_hub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sknlp_hub_net
+
+volumes:
+  sknlp_hub_pgdata:
+    # Named volume — this is where your actual data lives. Back this up
+    # regularly (pg_dump on a cron, or a dedicated backup container) now
+    # that you're self-managing Postgres instead of using a managed DO
+    # database. Losing this a week before launch would be a bad time to
+    # discover there was no backup.
+
+networks:
+  sknlp_hub_net:
+    driver: bridge
