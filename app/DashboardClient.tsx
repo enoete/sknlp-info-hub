@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import styles from './dashboard.module.css';
 import type { DashboardClaim } from './lib/claims';
+import { getCategoryColor } from './lib/categoryColors';
 
 const ALL = 'all';
 
@@ -53,31 +54,46 @@ export default function DashboardClient({ claims }: { claims: DashboardClaim[] }
         >
           All sectors
         </span>
-        {categories.map((cat) => (
-          <span
-            key={cat}
-            className={`${styles.pill} ${categoryFilter === cat ? styles.pillActive : ''}`}
-            onClick={() => setCategoryFilter(cat)}
-          >
-            {cat}
-          </span>
-        ))}
+        {categories.map((cat) => {
+          const active = categoryFilter === cat;
+          const color = getCategoryColor(cat);
+          return (
+            <span
+              key={cat}
+              className={`${styles.pill} ${active ? styles.pillActive : ''}`}
+              style={active ? undefined : { background: color.tint, color: color.ink, borderColor: 'transparent' }}
+              onClick={() => setCategoryFilter(cat)}
+            >
+              {cat}
+            </span>
+          );
+        })}
       </div>
 
       <div className={styles.claimGrid}>
         {filtered.length === 0 && (
           <div className={styles.emptyState}>No accomplishments match these filters yet.</div>
         )}
-        {filtered.map((c) => (
+        {filtered.map((c) => {
+          const color = getCategoryColor(c.category);
+          return (
           <div className={styles.claimCard} key={c.id}>
             <div className={styles.pin}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <span className={styles.cat}>{c.category ?? 'Uncategorized'}</span>
+            <span className={styles.cat} style={{ background: color.tint, color: color.ink }}>
+              {c.category ?? 'Uncategorized'}
+            </span>
             <h3>{c.title}</h3>
             <div className={styles.summary}>{c.summary}</div>
+            {c.citizen_impact && (
+              <div className={styles.impactBlock}>
+                <div className={styles.impactLabel}>What this means for you</div>
+                <p>{c.citizen_impact}</p>
+              </div>
+            )}
             <div className={styles.meta}>
               <span className={styles.src}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -89,7 +105,8 @@ export default function DashboardClient({ claims }: { claims: DashboardClaim[] }
               <span className={styles.date}>{c.event_date ?? 'date unknown'}</span>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </>
   );

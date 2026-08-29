@@ -5,6 +5,7 @@ export interface DashboardClaim {
   title: string;
   summary: string;
   category: string | null;
+  citizen_impact: string | null;
   year: number | null;
   event_date: string | null;
   source_org: string;
@@ -28,7 +29,7 @@ export interface DashboardStats {
 export async function getDashboardClaims(): Promise<DashboardClaim[]> {
   const { rows } = await pool.query<DashboardClaim>(
     `SELECT
-       c.id, c.title, c.summary, c.category, c.year,
+       c.id, c.title, c.summary, c.category, c.citizen_impact, c.year,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.speaker_org AS source_org, s.origin_url AS source_url, s.source_type
      FROM claims c
