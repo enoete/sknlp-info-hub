@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import styles from './chat.module.css';
 
 interface Citation {
@@ -20,6 +20,7 @@ interface AskResponse {
   no_record_message?: string;
   retrieval_count?: number;
   retrieved_titles?: string[];
+  follow_up_suggestions?: string[];
   error?: string;
 }
 
@@ -34,6 +35,20 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  // Starts as the dynamic starting suggestions from the page; replaced with
+  // context-aware follow-ups after each answered question (see ask() below).
+  // A no-record answer, or one with no same-category follow-ups available,
+  // leaves whatever was showing in place rather than clearing it — no
+  // suggestion pill is ever shown that wasn't derived from a real claim.
+  const [currentSuggestions, setCurrentSuggestions] = useState<string[]>(suggestions);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Runs on every new message AND on the loading flag, so the "Searching
+  // the record…" line and the eventual answer are both scrolled into view
+  // without the person ever having to scroll the log by hand.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, loading]);
 
   async function ask(question: string) {
     if (!question.trim() || loading) return;
@@ -51,6 +66,9 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
         setMessages((m) => [...m, { role: 'bot', errorText: data.error || `Request failed (${res.status})` }]);
       } else {
         setMessages((m) => [...m, { role: 'bot', answer: data }]);
+        if (data.follow_up_suggestions?.length > 0) {
+          setCurrentSuggestions(data.follow_up_suggestions);
+        }
       }
     } catch (err) {
       setMessages((m) => [...m, { role: 'bot', errorText: String(err) }]);
@@ -129,10 +147,11 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
             )
           )}
           {loading && <div className={styles.debugLine}>Searching the record…</div>}
+          <div ref={bottomRef} />
         </div>
 
         <div className={styles.suggestionRow}>
-          {suggestions.map((s) => (
+          {currentSuggestions.map((s) => (
             <span key={s} className={styles.suggestion} onClick={() => ask(s)}>
               {s}
             </span>
@@ -155,6 +174,9 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
             Search record
           </button>
         </form>
+        <div className={styles.privacyNote}>
+          Nothing you ask here is linked to your identity — ask freely.
+        </div>
       </div>
     </>
   );

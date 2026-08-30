@@ -1,34 +1,35 @@
 import { pool } from './db';
 import { retrieve } from './retrieve';
+import { getMostAskedFoundQuestions } from './chatQueries';
 
-// One deliberately-undocumented example kept in every suggestion set so the
-// "no record" path stays demonstrated, not just the happy path. Can't be
-// derived from real data by definition — it's testing the absence of it.
-// Verified periodically (see getSuggestedQuestions) that it still actually
-// returns nothing as the dataset grows, rather than assumed forever.
-const NO_RECORD_EXAMPLE = 'Did the government build a new international airport?';
-
+// Last-resort only — used when there's truly nothing to build starting
+// suggestions from yet (empty chat_queries AND no opposition claims), not
+// mixed in alongside real ones. Includes one deliberate no-record example
+// so a brand-new deployment still demonstrates that path once.
 const FALLBACK_QUESTIONS = [
   'Did the minimum wage actually increase?',
-  'Is it true crime has doubled since 2022?',
-  NO_RECORD_EXAMPLE
+  'Did the government build a new international airport?'
 ];
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // real content changes rarely enough that regenerating every page load is wasted API spend
+const MOST_ASKED_LIMIT = 4;
 let cache: { questions: string[]; expiresAt: number } | null = null;
 
-interface SampleClaim {
+export interface SampleClaim {
   title: string;
   category: string | null;
   stance: string;
 }
 
-async function sampleClaims(): Promise<SampleClaim[]> {
+// Source (b) for getSuggestedQuestions: one live/recent Opposition Watch
+// claim. "Recent" = most recent by the date the event actually happened,
+// falling back to when it was added if that's unset.
+async function sampleRecentOppositionClaim(): Promise<SampleClaim[]> {
   const { rows } = await pool.query<SampleClaim>(
     `SELECT title, category, stance FROM claims
-     WHERE review_status = 'approved'
-     ORDER BY random()
-     LIMIT 5`
+     WHERE review_status = 'approved' AND stance = 'opposition_statement'
+     ORDER BY event_date DESC NULLS LAST, created_at DESC
+     LIMIT 1`
   );
   return rows;
 }
@@ -50,7 +51,7 @@ const SUGGESTION_TOOL = {
   }
 };
 
-async function phraseAsQuestions(claims: SampleClaim[]): Promise<string[] | null> {
+export async function phraseAsQuestions(claims: SampleClaim[]): Promise<string[] | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || apiKey === 'sk-ant-xxxx') return null;
 
@@ -91,20 +92,14 @@ async function phraseAsQuestions(claims: SampleClaim[]): Promise<string[] | null
   }
 }
 
-// Generates suggestions from real approved claims, then verifies each one
-// through the exact same retrieval path /api/ask uses — if an LLM paraphrase
-// happens to drop the keyword that would've matched, that slot falls back to
-// the claim's own title (guaranteed to match itself) rather than shipping a
-// "suggested" question that would ironically return "no record" when clicked.
-export async function getSuggestedQuestions(): Promise<string[]> {
-  const now = Date.now();
-  if (cache && cache.expiresAt > now) return cache.questions;
-
-  const claims = await sampleClaims().catch(() => [] as SampleClaim[]);
-  if (claims.length === 0) return FALLBACK_QUESTIONS;
-
-  const phrased = (await phraseAsQuestions(claims)) ?? claims.map((c) => c.title);
-
+// Verifies each phrased question through the exact same retrieval path
+// /api/ask uses — if an LLM paraphrase happens to drop the keyword that
+// would've matched, that slot falls back to the claim's own title
+// (guaranteed to match itself) rather than shipping a "suggested" question
+// that would ironically return "no record" when clicked. Shared by the
+// starting-suggestions path below and the per-answer follow-up path
+// (getFollowUpQuestions) — same reliability bar in both places.
+export async function verifyPhrasedQuestions(phrased: string[], claims: SampleClaim[]): Promise<string[]> {
   const verified: string[] = [];
   for (let i = 0; i < phrased.length; i++) {
     try {
@@ -114,20 +109,68 @@ export async function getSuggestedQuestions(): Promise<string[]> {
       verified.push(claims[i].title);
     }
   }
+  return verified;
+}
 
-  // Re-confirm the no-record example still finds nothing as real content
-  // grows — if it now accidentally matches something, drop it rather than
-  // ship a "no record" suggestion that would actually return an answer.
-  let noRecordExample: string | null = NO_RECORD_EXAMPLE;
-  try {
-    const hits = await retrieve(NO_RECORD_EXAMPLE);
-    if (hits.length > 0) noRecordExample = null;
-  } catch {
-    noRecordExample = null;
+// Starting suggestions, shown before any question is asked. Mixes two real
+// sources rather than picking one exclusively:
+//  (a) the most-asked questions in chat_queries that actually led to a
+//      found=true answer — shown verbatim, re-verified against retrieve()
+//      here since DB content can drift after a question was first logged
+//      (a claim could be unapproved later); anything that no longer
+//      retrieves is dropped, not kept on faith.
+//  (b) one live/recent Opposition Watch claim, phrased as a question and
+//      verified the same way every other generated suggestion is.
+// Falls back to a static list only if both sources are genuinely empty
+// (e.g. a brand-new deployment with no chat history yet) — never padded
+// with anything not actually traceable to (a) or (b).
+export async function getSuggestedQuestions(): Promise<string[]> {
+  const now = Date.now();
+  if (cache && cache.expiresAt > now) return cache.questions;
+
+  const mostAsked = await getMostAskedFoundQuestions(MOST_ASKED_LIMIT).catch(() => [] as string[]);
+  const verifiedMostAsked: string[] = [];
+  for (const q of mostAsked) {
+    try {
+      const hits = await retrieve(q);
+      if (hits.length > 0) verifiedMostAsked.push(q);
+    } catch {
+      // drop rather than risk shipping a starter that now leads nowhere
+    }
   }
 
-  const finalQuestions = noRecordExample ? [...verified.slice(0, 4), noRecordExample] : verified.slice(0, 5);
+  const oppositionClaims = await sampleRecentOppositionClaim().catch(() => [] as SampleClaim[]);
+  let oppositionQuestion: string[] = [];
+  if (oppositionClaims.length > 0) {
+    const phrased = (await phraseAsQuestions(oppositionClaims)) ?? oppositionClaims.map((c) => c.title);
+    oppositionQuestion = await verifyPhrasedQuestions(phrased, oppositionClaims);
+  }
+
+  const combined = Array.from(new Set([...verifiedMostAsked, ...oppositionQuestion])).slice(0, 5);
+  const finalQuestions = combined.length > 0 ? combined : FALLBACK_QUESTIONS;
 
   cache = { questions: finalQuestions, expiresAt: now + CACHE_TTL_MS };
   return finalQuestions;
+}
+
+// Follow-up suggestions shown after an answered question: 2-3 real
+// questions drawn from OTHER approved claims sharing the just-cited
+// claim's category. No category, or no other claims in it, means no
+// follow-ups — returns [] rather than inventing something not actually
+// in the database (the client keeps whatever suggestions were already
+// showing in that case; see ChatClient.tsx).
+export async function getFollowUpQuestions(excludeClaimId: string, category: string | null): Promise<string[]> {
+  if (!category) return [];
+
+  const { rows: claims } = await pool.query<SampleClaim>(
+    `SELECT title, category, stance FROM claims
+     WHERE review_status = 'approved' AND category = $1 AND id != $2
+     ORDER BY random()
+     LIMIT 3`,
+    [category, excludeClaimId]
+  );
+  if (claims.length === 0) return [];
+
+  const phrased = (await phraseAsQuestions(claims)) ?? claims.map((c) => c.title);
+  return verifyPhrasedQuestions(phrased, claims);
 }

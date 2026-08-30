@@ -280,6 +280,29 @@ CREATE TABLE audit_log (
 );
 
 -- ------------------------------------------------------------
+-- CHAT QUERIES: every question asked through "Ask the Record",
+-- for the "most-asked questions" starting-suggestion source
+-- (app/lib/suggestions.ts) and future admin visibility into what
+-- people are actually asking. Deliberately carries NO IP address,
+-- session id, user agent, or any other identity/device signal —
+-- this is a content log, not a tracking log (same promise already
+-- made for public "Suggest a Priority" submissions). The privacy
+-- line in the Ask the Record UI depends on this staying true; if a
+-- future column is ever added here, re-check that promise before
+-- adding it, don't assume it still holds.
+-- ------------------------------------------------------------
+CREATE TABLE chat_queries (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    question    TEXT NOT NULL,
+    found       BOOLEAN NOT NULL,
+    claim_id    UUID REFERENCES claims(id),  -- the claim actually cited back; null when found=false
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Matches the exact "most-asked, found=true" query in suggestions.ts.
+CREATE INDEX idx_chat_queries_found_question ON chat_queries (question) WHERE found = true;
+
+-- ------------------------------------------------------------
 -- CALENDAR (separate, simple)
 -- ------------------------------------------------------------
 CREATE TABLE events (

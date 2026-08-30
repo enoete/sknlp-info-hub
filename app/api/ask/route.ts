@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, getClientIp } from '@/app/lib/rate-limit';
 import { retrieve, RetrievedRow } from '@/app/lib/retrieve';
+import { getFollowUpQuestions } from '@/app/lib/suggestions';
+import { logChatQuery } from '@/app/lib/chatQueries';
 import { CHATBOT_SYSTEM_PROMPT } from './system-prompt';
 
 export const dynamic = 'force-dynamic';
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
 
   // Hard gate: nothing matched at all -> answer directly, no LLM call.
   if (retrieved.length === 0) {
+    await logChatQuery(question, false, null).catch(() => {});
     return safeNoRecord(0);
   }
 
@@ -199,19 +202,35 @@ ${contextBlock}`;
   // from putting a plausible-looking but wrong/invented URL in a citation
   // field. If it doesn't match something real, fail closed rather than
   // render a citation-shaped answer that isn't actually grounded.
+  let matchedClaim: RetrievedRow | undefined;
   if (answer.found) {
     const validUrls = new Set(retrieved.map((c) => c.origin_url));
     if (!answer.citation?.url || !validUrls.has(answer.citation.url) || !answer.claim_title) {
+      await logChatQuery(question, false, null).catch(() => {});
       return safeNoRecord(retrieved.length, {
         _validation_failure: 'model citation did not match a retrieved source; failed closed'
       });
     }
+    matchedClaim = retrieved.find((c) => c.origin_url === answer.citation!.url);
   }
+
+  // Context-aware follow-ups: 2-3 real questions from OTHER approved claims
+  // in the cited claim's category. Only possible when there's a real cited
+  // claim to derive a category from — never fabricated for a no-record
+  // answer. A failure here should never take down an otherwise-good answer,
+  // so it's caught and just omitted rather than propagated.
+  let followUpSuggestions: string[] = [];
+  if (matchedClaim) {
+    followUpSuggestions = await getFollowUpQuestions(matchedClaim.id, matchedClaim.category).catch(() => []);
+  }
+
+  await logChatQuery(question, answer.found, matchedClaim?.id ?? null).catch(() => {});
 
   return NextResponse.json({
     ...answer,
     no_record_message: answer.found ? undefined : answer.no_record_message || NO_RECORD_FALLBACK,
     retrieval_count: retrieved.length,
-    retrieved_titles: retrieved.map((c) => c.title) // for debugging/demo transparency only
+    retrieved_titles: retrieved.map((c) => c.title), // for debugging/demo transparency only
+    follow_up_suggestions: followUpSuggestions
   });
 }
