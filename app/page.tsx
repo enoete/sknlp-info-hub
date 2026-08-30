@@ -12,6 +12,7 @@ export default async function DashboardPage() {
     <main className="max-w-5xl mx-auto px-9 py-12">
       <div className={styles.topLinks}>
         <Link href="/ask">Ask the Record →</Link>
+        <Link href="/source-manager">Source Manager (internal) →</Link>
       </div>
 
       <div className={styles.pageHead}>

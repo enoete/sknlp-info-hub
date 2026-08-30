@@ -325,6 +325,17 @@ Watch, Speakers, Calendar, plus an internal Review Queue. Nav exists in two
 places in the mockup (sidebar + top tab strip) — keep both, they were added
 deliberately after user testing showed single-nav was easy to miss.
 
+`design-reference/source-manager-mockup.html` is the pixel spec for the
+Source Manager (internal, admin-only) and the public "Suggest a Priority"
+feature bundled in the same mockup file. Covers: registered-sources list
+with run/edit/delete actions, an "add a source" form supporting multi-modal
+single-post attachments (image+text+video grouped under one source — see
+`source_attachments` in `schema.sql`), per-run extraction results, plus the
+separate anonymous public suggestion box and its admin-facing trending-themes
+view. Being built in stages, not all at once — see "Ingestion agent" above
+for the schema this depends on (`sources_registry.deleted_at`,
+`source_attachments`, `document_chunks`).
+
 ## Data model
 
 `schema.sql` is the full Postgres schema. Key tables: `claims` (the atomic

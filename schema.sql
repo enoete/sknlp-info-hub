@@ -18,6 +18,7 @@ CREATE TYPE source_tier AS ENUM ('owned', 'third_party');
 CREATE TYPE detection_method AS ENUM ('oauth_api', 'push_webhook', 'public_rss', 'manual_capture');
 CREATE TYPE registry_status AS ENUM ('active', 'paused', 'needs_legal_review');
 CREATE TYPE sample_origin AS ENUM ('initial_enrollment', 'confirmed_correction');
+CREATE TYPE attachment_type AS ENUM ('image', 'text', 'video');
 
 -- ------------------------------------------------------------
 -- ADMIN USERS: created first — referenced by almost everything
@@ -70,7 +71,12 @@ CREATE TABLE sources_registry (
     last_new_item_at  TIMESTAMPTZ,
     notes             TEXT,
     added_by          UUID REFERENCES admin_users(id),
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Soft delete only — a registry row can back-reference real ingested
+    -- sources/claims, so a hard DELETE would either cascade into content
+    -- that already went public or fail on the FK. Source Manager's delete
+    -- action sets this instead of removing the row.
+    deleted_at        TIMESTAMPTZ
 );
 
 -- ------------------------------------------------------------
@@ -99,6 +105,22 @@ CREATE TABLE sources (
                         setweight(to_tsvector('english', coalesce(speaker_name, '')), 'A') ||
                         setweight(to_tsvector('english', coalesce(speaker_org, '')), 'B')
                     ) STORED
+);
+
+-- ------------------------------------------------------------
+-- SOURCE ATTACHMENTS: multi-modal single-post ingestion. One
+-- Facebook post can carry a photo, caption text, and a video
+-- together — grouped under one `sources` row and extracted as a
+-- single combined post, not three disconnected items (Source
+-- Manager's "Add a source" form's attachment slots write here).
+-- ------------------------------------------------------------
+CREATE TABLE source_attachments (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id       UUID NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    attachment_type attachment_type NOT NULL,
+    file_url        TEXT,
+    raw_text        TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ------------------------------------------------------------
@@ -150,6 +172,24 @@ CREATE TABLE proof_documents (
     uploaded_by         UUID REFERENCES admin_users(id),
     notes               TEXT
 );
+
+-- ------------------------------------------------------------
+-- DOCUMENT CHUNKS: claim knowledge base — deep supporting
+-- documentation per proof document, chunked for retrieval.
+-- embedding stays null until a Voyage AI key exists; falls back
+-- to full-text search on chunk_text until then, same reasoning
+-- as claims.search_vector above.
+-- ------------------------------------------------------------
+CREATE TABLE document_chunks (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proof_document_id   UUID NOT NULL REFERENCES proof_documents(id) ON DELETE CASCADE,
+    chunk_text          TEXT NOT NULL,
+    chunk_order         INT NOT NULL,
+    embedding           VECTOR(1024),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_document_chunks_claim_lookup ON document_chunks (proof_document_id);
 
 -- ------------------------------------------------------------
 -- CLAIMS: the atomic unit — one specific statement, either

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Source Manager + Suggest a Priority — mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Semi+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F5F1; --paper:#FFFFFF; --paper-2:#F1EEE7; --ink:#1C1A17;
+    --muted:#6B675F; --line:#E5E1D6; --red:#C8102E; --red-tint:rgba(200,16,46,0.08);
+    --gold:#F4B400; --gold-ink:#8A6200; --gold-tint:rgba(244,180,0,0.14);
+    --green-ink:#0E8A4B; --green-tint:rgba(14,138,75,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;font-size:14.5px;}
+  h1{font-family:'Anton',sans-serif;font-weight:400;font-size:28px;margin:0;}
+  h2{font-family:'Barlow Semi Condensed',sans-serif;font-weight:700;font-size:12px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
+  .wrap{max-width:1040px;margin:0 auto;padding:32px 24px 80px;}
+  .eyebrow{font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:var(--red);font-weight:700;margin-bottom:6px;}
+  .lede{color:var(--muted);max-width:640px;margin:8px 0 28px;}
+  .section-divider{margin:48px 0 28px;border-top:2px dashed var(--line);padding-top:28px;}
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+  label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.02em;font-family:'Barlow Semi Condensed',sans-serif;}
+  input,select,textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-family:inherit;font-size:13.5px;background:var(--bg);}
+  button{font-family:'Barlow Semi Condensed',sans-serif;font-weight:700;cursor:pointer;border:none;border-radius:999px;padding:9px 16px;font-size:12.5px;}
+  .btn-primary{background:var(--red);color:#fff;}
+  .btn-ghost{background:var(--paper-2);color:var(--ink);border:1px solid var(--line);}
+
+  .source-row{display:flex;align-items:center;gap:14px;padding:13px 16px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--paper);}
+  .source-icon{width:34px;height:34px;border-radius:8px;background:var(--gold-tint);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;color:var(--gold-ink);font-weight:700;font-family:'Barlow Semi Condensed',sans-serif;}
+  .source-main{flex:1;min-width:0;}
+  .source-main .name{font-weight:700;font-size:13.5px;font-family:'Barlow Semi Condensed',sans-serif;}
+  .source-main .meta{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;}
+  .status-dot.active{background:var(--green-ink);}
+  .status-dot.paused{background:var(--gold-ink);}
+  .status-dot.error{background:var(--red);}
+  .source-actions{display:flex;gap:6px;flex-shrink:0;}
+  .icon-btn{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--paper-2);display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;}
+
+  .run-confirm{background:var(--green-tint);border:1px solid var(--green-ink);border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:13px;}
+  .run-confirm .title{font-weight:700;color:var(--green-ink);font-family:'Barlow Semi Condensed',sans-serif;margin-bottom:4px;}
+
+  .result-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .result-item:last-child{border-bottom:none;}
+  .conf-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;}
+  .conf-high{background:var(--green-tint);color:var(--green-ink);}
+  .conf-medium{background:var(--gold-tint);color:var(--gold-ink);}
+  .conf-low{background:var(--red-tint);color:var(--red);}
+
+  .suggest-box{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:24px;}
+  .suggest-box textarea{min-height:90px;resize:vertical;}
+  .anon-note{font-size:11.5px;color:var(--muted);margin-top:8px;display:flex;align-items:center;gap:6px;}
+
+  .trend-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .trend-item:last-child{border-bottom:none;}
+  .trend-bar-wrap{flex:1;background:var(--paper-2);border-radius:999px;height:8px;overflow:hidden;}
+  .trend-bar{height:100%;background:var(--red);border-radius:999px;}
+  .trend-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);width:70px;text-align:right;flex-shrink:0;}
+  .trend-label{width:190px;flex-shrink:0;font-size:13px;font-weight:600;}
+
+  .mockup-note{background:var(--gold-tint);border:1px solid var(--gold);color:var(--gold-ink);border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:20px;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Internal · admin only</div>
+  <h1>SOURCE MANAGER</h1>
+  <p class="lede">Manage every registered channel, or drop in a one-off item right now — a video, a website, an image, or pasted text. Everything lands in the same review queue regardless of type.</p>
+
+  <div class="panel">
+    <h2>Add a source</h2>
+    <div class="row">
+      <div>
+        <label>Type</label>
+        <select>
+          <option>YouTube channel (ongoing)</option>
+          <option>Website / news feed (ongoing)</option>
+          <option>Single video URL (one-off)</option>
+          <option>Image upload (one-off)</option>
+          <option>Paste text (one-off)</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label>Classification</label>
+        <select>
+          <option>Official — SKNLP</option>
+          <option>Official — Government</option>
+          <option>Opposition figure/party</option>
+          <option>Press</option>
+          <option>Third party</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label>URL, or paste content directly</label>
+      <input placeholder="https://www.youtube.com/@example or paste text here">
+    </div>
+    <div style="margin-bottom:12px;padding:12px;background:var(--paper-2);border-radius:8px;border:1px dashed var(--line);">
+      <label style="margin-bottom:8px;">Additional attachments for this same post (optional)</label>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">One Facebook post can have a photo, caption text, and a video together — attach all of them here so they're extracted as one combined post, not three disconnected items.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-ghost" style="font-size:11.5px;">+ Add image</button>
+        <button class="btn-ghost" style="font-size:11.5px;">+ Add text</button>
+        <button class="btn-ghost" style="font-size:11.5px;">+ Add video</button>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn-ghost">Save without running</button>
+      <button class="btn-primary">Add and run now</button>
+    </div>
+  </div>
+
+  <h2 style="margin-top:24px;">Registered sources (10)</h2>
+
+  <div class="source-row">
+    <div class="source-icon">YT</div>
+    <div class="source-main">
+      <div class="name">SKNLP official YouTube</div>
+      <div class="meta"><span class="status-dot active"></span>Active · owned · last checked 8m ago · last new item 2h ago</div>
+    </div>
+    <div class="source-actions">
+      <button class="icon-btn" title="Run now">&#9654;</button>
+      <button class="icon-btn" title="Edit">&#9998;</button>
+      <button class="icon-btn" title="Delete" style="color:var(--red);">&#10005;</button>
+    </div>
+  </div>
+
+  <div class="source-row">
+    <div class="source-icon">W</div>
+    <div class="source-main">
+      <div class="name">Freedom FM news site</div>
+      <div class="meta"><span class="status-dot active"></span>Active · third-party · last checked 1h ago · last new item 3d ago</div>
+    </div>
+    <div class="source-actions">
+      <button class="icon-btn" title="Run now">&#9654;</button>
+      <button class="icon-btn" title="Edit">&#9998;</button>
+      <button class="icon-btn" title="Delete" style="color:var(--red);">&#10005;</button>
+    </div>
+  </div>
+
+  <div class="source-row">
+    <div class="source-icon">FB</div>
+    <div class="source-main">
+      <div class="name">SKNIS Facebook page</div>
+      <div class="meta"><span class="status-dot paused"></span>Manual capture only · robots.txt confirmed blocked · add via images above</div>
+    </div>
+    <div class="source-actions">
+      <button class="icon-btn" title="Edit">&#9998;</button>
+    </div>
+  </div>
+
+  <div class="source-row">
+    <div class="source-icon">W</div>
+    <div class="source-main">
+      <div class="name">ZIZ news</div>
+      <div class="meta"><span class="status-dot error"></span>Paused · site offline · government-aligned when active, never used as sole confirmation</div>
+    </div>
+    <div class="source-actions">
+      <button class="icon-btn" title="Edit">&#9998;</button>
+    </div>
+  </div>
+
+  <div class="run-confirm">
+    <div class="title">✓ Run complete — SKNLP official YouTube</div>
+    Checked 1 new video since last run. Extracted 4 candidate claims (3 high confidence, 1 medium). All 4 added to the review queue as pending. No speaker matched below the identification threshold.
+    <div style="margin-top:8px;"><button class="btn-ghost">View extracted results →</button></div>
+  </div>
+
+  <div class="panel">
+    <h2>Extraction results — "PM address on water infrastructure", 3 days ago</h2>
+    <div class="result-item">
+      <span>Advanced Basseterre Desalination Plant to 2M gal/day capacity</span>
+      <span class="conf-tag conf-high">High</span>
+    </div>
+    <div class="result-item">
+      <span>Committed EC$50M toward national water security</span>
+      <span class="conf-tag conf-high">High</span>
+    </div>
+    <div class="result-item">
+      <span>Referenced upcoming groundwater drilling in Saddlers</span>
+      <span class="conf-tag conf-medium">Medium</span>
+    </div>
+    <div class="result-item">
+      <span>General remark on "continued progress across sectors"</span>
+      <span class="conf-tag conf-low">Low — likely rhetoric, not a checkable claim</span>
+    </div>
+  </div>
+
+  <div class="section-divider">
+    <div class="eyebrow">Public · new feature</div>
+    <h1 style="font-size:26px;">SUGGEST A PRIORITY</h1>
+    <p class="lede">Anonymous. Tell the party what you want to see next — no login, no name attached.</p>
+
+    <div class="suggest-box">
+      <label>What would you like the government to focus on?</label>
+      <textarea placeholder="e.g. Better bus routes connecting Sandy Point to Basseterre"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+        <button class="btn-primary">Submit suggestion</button>
+      </div>
+      <div class="anon-note">🔒 Not linked to your identity or IP — this is a content log, not a tracking log.</div>
+    </div>
+  </div>
+
+  <div class="section-divider">
+    <div class="eyebrow">Internal · admin only</div>
+    <h1 style="font-size:26px;">TRENDING SUGGESTIONS</h1>
+    <p class="lede">AI-clustered themes from public submissions, ranked by how often each comes up. Same "here's the signal, you decide what to do" framing as the opposition-volume view.</p>
+
+    <div class="panel">
+      <div class="trend-item">
+        <div class="trend-label">Better public transport</div>
+        <div class="trend-bar-wrap"><div class="trend-bar" style="width:82%;"></div></div>
+        <div class="trend-count">47 mentions</div>
+      </div>
+      <div class="trend-item">
+        <div class="trend-label">Lower cost of living</div>
+        <div class="trend-bar-wrap"><div class="trend-bar" style="width:71%;"></div></div>
+        <div class="trend-count">39 mentions</div>
+      </div>
+      <div class="trend-item">
+        <div class="trend-label">More youth employment programs</div>
+        <div class="trend-bar-wrap"><div class="trend-bar" style="width:44%;"></div></div>
+        <div class="trend-count">24 mentions</div>
+      </div>
+      <div class="trend-item">
+        <div class="trend-label">Faster internet in rural areas</div>
+        <div class="trend-bar-wrap"><div class="trend-bar" style="width:29%;"></div></div>
+        <div class="trend-count">16 mentions</div>
+      </div>
+    </div>
+    <div class="mockup-note">Mockup data — real version clusters raw submissions via embedding similarity, re-computed periodically, not per-submission in real time.</div>
+  </div>
+</div>
+</body>
+</html>
