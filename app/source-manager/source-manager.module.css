@@ -111,3 +111,78 @@
   margin-bottom: 20px;
   font-weight: 600;
 }
+
+/* Add-a-source form (Stage 2) */
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.formLabel {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-family: 'Barlow Semi Condensed', sans-serif;
+}
+.select,
+.textInput {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-family: inherit;
+  font-size: 13.5px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btnPrimary {
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 12.5px;
+  background: var(--red);
+  color: #fff;
+}
+.btnPrimary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.formSuccess {
+  background: var(--green-tint);
+  border: 1px solid var(--green-ink);
+  color: var(--green-ink);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+.formError {
+  background: var(--red-tint);
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-top: 4px;
+}

@@ -1,7 +1,7 @@
-import Link from 'next/link';
 import styles from './source-manager.module.css';
 import { getRegisteredSources, RegisteredSource } from '@/app/lib/sourceManager';
 import { relativeTime } from '@/app/lib/time';
+import AddSourceForm from './AddSourceForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,10 +54,12 @@ export default async function SourceManagerPage() {
       </div>
 
       <div className={styles.stageNote}>
-        Stage 1: read-only list. Add/edit/delete/run actions from the mockup aren&apos;t wired up
-        yet — see <Link href="/">Dashboard</Link> or{' '}
+        Stage 2: add a source (writes to <code>sources_registry</code> only). Edit/delete/run
+        actions from the mockup aren&apos;t wired up yet — see{' '}
         <code>design-reference/source-manager-mockup.html</code> for the full planned view.
       </div>
+
+      <AddSourceForm />
 
       <h2 className={styles.sectionLabel}>Registered sources ({sources.length})</h2>
 
