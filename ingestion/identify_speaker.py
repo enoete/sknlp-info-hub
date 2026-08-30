@@ -49,28 +49,57 @@ def _headers():
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
+REQUEST_TIMEOUT_S = 30   # per-HTTP-call socket timeout — without this, a stalled
+                         # connection hangs forever regardless of the job-level
+                         # timeout_s below, since the wall-clock budget is only
+                         # ever checked *between* calls, never inside one.
+MAX_CONSECUTIVE_POLL_ERRORS = 3  # tolerate a few transient blips (network hiccup,
+                                 # a stray 502) without aborting an otherwise-fine job
+
+
 def _run_job(path: str, payload: dict, poll_interval_s: float = 3, timeout_s: float = 120) -> dict:
     """pyannoteAI's voiceprint/identify/diarize endpoints are all async: the
     POST returns {jobId, status:"created"} immediately, and the real result
     only shows up once GET /jobs/{jobId} reports status "succeeded" (or
     "failed"). Confirmed empirically against the real API — every endpoint
     here is job-based, not request/response.
+
+    Bounded on two axes so this can't hang indefinitely: a hard wall-clock
+    budget (timeout_s) across the whole poll loop, AND a socket-level
+    timeout on every individual HTTP call (REQUEST_TIMEOUT_S) so a single
+    stalled connection can't silently eat the whole budget in one call.
     """
-    resp = requests.post(f"{PYANNOTE_API_BASE}{path}", headers=_headers(), json=payload)
+    resp = requests.post(f"{PYANNOTE_API_BASE}{path}", headers=_headers(), json=payload, timeout=REQUEST_TIMEOUT_S)
     resp.raise_for_status()
     job_id = resp.json()["jobId"]
 
     waited = 0.0
+    consecutive_errors = 0
+    poll_delay = poll_interval_s
     while waited < timeout_s:
-        time.sleep(poll_interval_s)
-        waited += poll_interval_s
-        job = requests.get(f"{PYANNOTE_API_BASE}/jobs/{job_id}", headers=_headers())
-        job.raise_for_status()
-        job_data = job.json()
+        time.sleep(poll_delay)
+        waited += poll_delay
+
+        try:
+            job = requests.get(f"{PYANNOTE_API_BASE}/jobs/{job_id}", headers=_headers(), timeout=REQUEST_TIMEOUT_S)
+            job.raise_for_status()
+            job_data = job.json()
+        except requests.RequestException as e:
+            consecutive_errors += 1
+            if consecutive_errors > MAX_CONSECUTIVE_POLL_ERRORS:
+                raise RuntimeError(
+                    f"pyannoteAI job {job_id}: {MAX_CONSECUTIVE_POLL_ERRORS} consecutive poll failures, giving up. Last error: {e}"
+                ) from e
+            continue
+
+        consecutive_errors = 0
         if job_data["status"] == "succeeded":
             return job_data["output"]
         if job_data["status"] == "failed":
             raise RuntimeError(f"pyannoteAI job {job_id} failed: {job_data}")
+        # mild backoff for slow jobs so we don't hammer the API while waiting
+        poll_delay = min(poll_delay * 1.5, 10)
+
     raise TimeoutError(f"pyannoteAI job {job_id} did not finish within {timeout_s}s")
 
 
