@@ -25,6 +25,30 @@ export const ADD_SOURCE_TYPE_OPTIONS: { value: string; label: string }[] = [
 export const VALID_SOURCE_TYPES = new Set(SOURCE_TYPE_OPTIONS.map((o) => o.value));
 export const VALID_ADD_SOURCE_TYPES = new Set(ADD_SOURCE_TYPE_OPTIONS.map((o) => o.value));
 
+export type ContentFieldKind = 'url' | 'text' | 'textarea' | 'file';
+
+export interface ContentFieldConfig {
+  kind: ContentFieldKind;
+  label: string;
+  placeholder?: string;
+}
+
+// Drives AddSourceForm's content field per Type. Stage 2 still only ever
+// writes one string into sources_registry.handle_or_url — there's no
+// source_attachments/proof_documents write in this stage yet — so 'file'
+// kind stores just the selected filename (nothing is actually uploaded or
+// persisted), and 'textarea' stores the pasted text verbatim as that
+// string. Both are honest stopgaps until real content storage exists,
+// not a claim that the content itself is captured.
+export const CONTENT_FIELD_CONFIG: Record<string, ContentFieldConfig> = {
+  youtube_channel: { kind: 'url', label: 'URL or handle', placeholder: 'https://www.youtube.com/@example' },
+  website: { kind: 'url', label: 'URL', placeholder: 'https://example.com/news' },
+  single_video: { kind: 'url', label: 'Video URL', placeholder: 'https://www.youtube.com/watch?v=...' },
+  image_upload: { kind: 'file', label: 'Image file' },
+  paste_text: { kind: 'textarea', label: 'Pasted text', placeholder: 'Paste the post/article text here' },
+  other: { kind: 'text', label: 'URL or handle', placeholder: 'https://... or a reference' }
+};
+
 // Handles already confirmed as our own in seed/seed-sources-registry.sql
 // (tier='owned' rows). Matched against whatever the person types — a bare
 // handle or a full youtube.com URL both contain the @handle substring.

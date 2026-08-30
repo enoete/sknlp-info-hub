@@ -41,6 +41,7 @@ function sourceMetaLine(s: RegisteredSource): string {
 
 export default async function SourceManagerPage() {
   const sources = await getRegisteredSources();
+  const existingLabels = Array.from(new Set(sources.map((s) => s.label)));
 
   return (
     <main className="max-w-3xl mx-auto px-9 py-12">
@@ -59,7 +60,7 @@ export default async function SourceManagerPage() {
         <code>design-reference/source-manager-mockup.html</code> for the full planned view.
       </div>
 
-      <AddSourceForm />
+      <AddSourceForm existingLabels={existingLabels} />
 
       <h2 className={styles.sectionLabel}>Registered sources ({sources.length})</h2>
 

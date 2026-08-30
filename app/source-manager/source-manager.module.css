@@ -147,6 +147,15 @@
   background: var(--bg);
   color: var(--ink);
 }
+textarea.textInput {
+  resize: vertical;
+  min-height: 72px;
+}
+.fieldHint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 5px;
+}
 .formActions {
   display: flex;
   justify-content: flex-end;
