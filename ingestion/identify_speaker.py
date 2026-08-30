@@ -29,6 +29,7 @@ three functions below into the database and the admin review queue UI.
 """
 
 import os
+import time
 import requests
 
 PYANNOTE_API_BASE = "https://api.pyannote.ai/v1"
@@ -48,45 +49,83 @@ def _headers():
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
+def _run_job(path: str, payload: dict, poll_interval_s: float = 3, timeout_s: float = 120) -> dict:
+    """pyannoteAI's voiceprint/identify/diarize endpoints are all async: the
+    POST returns {jobId, status:"created"} immediately, and the real result
+    only shows up once GET /jobs/{jobId} reports status "succeeded" (or
+    "failed"). Confirmed empirically against the real API — every endpoint
+    here is job-based, not request/response.
+    """
+    resp = requests.post(f"{PYANNOTE_API_BASE}{path}", headers=_headers(), json=payload)
+    resp.raise_for_status()
+    job_id = resp.json()["jobId"]
+
+    waited = 0.0
+    while waited < timeout_s:
+        time.sleep(poll_interval_s)
+        waited += poll_interval_s
+        job = requests.get(f"{PYANNOTE_API_BASE}/jobs/{job_id}", headers=_headers())
+        job.raise_for_status()
+        job_data = job.json()
+        if job_data["status"] == "succeeded":
+            return job_data["output"]
+        if job_data["status"] == "failed":
+            raise RuntimeError(f"pyannoteAI job {job_id} failed: {job_data}")
+    raise TimeoutError(f"pyannoteAI job {job_id} did not finish within {timeout_s}s")
+
+
 def enroll_speaker(speaker_label: str, audio_clip_url: str) -> str:
     """Create or extend a voiceprint for a speaker from a clean audio clip
     (~20-30 seconds of that person, ideally without overlapping speech).
-    Returns a voiceprint reference id to store in speakers.voiceprint_ref
-    (or, for an additional sample on an already-enrolled speaker, this is
-    what gets called again during confirm_match below).
+
+    Returns the voiceprint itself — a base64-encoded embedding string, not
+    a server-side reference id. pyannoteAI's /voiceprint endpoint doesn't
+    keep any server-side record of enrolled speakers; the caller (us) owns
+    storing this value (in speakers.voiceprint_ref) and must pass it back
+    in full on every identify_segment() call. Confirmed via a live test
+    call — the docstring originally assumed an opaque "voiceprint_id" you
+    could reference later, which isn't how the real API works.
     """
-    resp = requests.post(
-        f"{PYANNOTE_API_BASE}/voiceprint",
-        headers=_headers(),
-        json={"label": speaker_label, "audio_url": audio_clip_url},
-    )
-    resp.raise_for_status()
-    return resp.json()["voiceprint_id"]
+    output = _run_job("/voiceprint", {"url": audio_clip_url})
+    return output["voiceprint"]
 
 
-def identify_segment(audio_clip_url: str, enrolled_voiceprint_ids: list) -> dict:
+def identify_segment(audio_clip_url: str, enrolled_voiceprints: dict) -> dict:
     """Match a segment's audio against the enrolled voiceprint set.
     Returns a routing decision, not just a raw score — this is the piece
     that turns "a number" into "what should the review queue actually do."
-    """
-    resp = requests.post(
-        f"{PYANNOTE_API_BASE}/identify",
-        headers=_headers(),
-        json={"audio_url": audio_clip_url, "voiceprint_ids": enrolled_voiceprint_ids},
-    )
-    resp.raise_for_status()
-    result = resp.json()
 
-    best = max(result.get("candidates", []), key=lambda c: c["score"], default=None)
-    if best is None:
+    enrolled_voiceprints: {speaker_label: voiceprint_string} — the actual
+    base64 voiceprint values returned by enroll_speaker(), not ids.
+    """
+    voiceprints_payload = [
+        {"label": label, "voiceprint": vp} for label, vp in enrolled_voiceprints.items()
+    ]
+    output = _run_job("/identify", {"url": audio_clip_url, "voiceprints": voiceprints_payload})
+
+    # Real shape (confirmed via a live call, not documented assumption):
+    # output.voiceprints is one entry per pyannoteAI-diarized speaker cluster
+    # found in the clip (SPEAKER_00, SPEAKER_01, ...), each with a
+    # {enrolled_label: confidence_0_to_100} map against every voiceprint we
+    # submitted. A clip can contain more than one diarized speaker; we take
+    # the single best (cluster, candidate) pair across all of them, since
+    # this function's contract is "who is most likely present," not a
+    # per-cluster breakdown.
+    best_label, best_score = None, -1
+    for cluster in output.get("voiceprints", []):
+        for label, score in cluster.get("confidence", {}).items():
+            if score > best_score:
+                best_label, best_score = label, score
+
+    if best_label is None:
         return {"decision": "unknown", "speaker_id": None, "score": 0}
 
-    if best["score"] >= AUTO_ASSIGN_THRESHOLD:
-        return {"decision": "auto_assign", "speaker_id": best["voiceprint_id"], "score": best["score"]}
-    elif best["score"] >= CONFIRM_THRESHOLD:
-        return {"decision": "needs_confirmation", "speaker_id": best["voiceprint_id"], "score": best["score"]}
+    if best_score >= AUTO_ASSIGN_THRESHOLD:
+        return {"decision": "auto_assign", "speaker_id": best_label, "score": best_score}
+    elif best_score >= CONFIRM_THRESHOLD:
+        return {"decision": "needs_confirmation", "speaker_id": best_label, "score": best_score}
     else:
-        return {"decision": "unknown", "speaker_id": None, "score": best["score"]}
+        return {"decision": "unknown", "speaker_id": None, "score": best_score}
 
 
 def confirm_match(speaker_label: str, audio_clip_url: str, confirmed: bool, correct_speaker_label: str = None) -> dict:
@@ -102,17 +141,17 @@ def confirm_match(speaker_label: str, audio_clip_url: str, confirmed: bool, corr
         the team too. Leave unenrolled; don't guess.
     """
     if confirmed:
-        voiceprint_id = enroll_speaker(speaker_label, audio_clip_url)
-        return {"action": "enrolled_confirmation", "speaker_label": speaker_label, "voiceprint_id": voiceprint_id}
+        voiceprint = enroll_speaker(speaker_label, audio_clip_url)
+        return {"action": "enrolled_confirmation", "speaker_label": speaker_label, "voiceprint": voiceprint}
     elif correct_speaker_label:
-        voiceprint_id = enroll_speaker(correct_speaker_label, audio_clip_url)
-        return {"action": "enrolled_correction", "speaker_label": correct_speaker_label, "voiceprint_id": voiceprint_id}
+        voiceprint = enroll_speaker(correct_speaker_label, audio_clip_url)
+        return {"action": "enrolled_correction", "speaker_label": correct_speaker_label, "voiceprint": voiceprint}
     else:
         return {"action": "left_unknown"}
 
 
 def resolve_speaker_identity(context_signal: str, context_confidence: str, context_name: str,
-                              audio_clip_url: str, enrolled_voiceprint_ids: dict) -> dict:
+                              audio_clip_url: str, enrolled_voiceprints: dict) -> dict:
     """The fusion step: combine Gemini's context-based guess (video title,
     on-screen text, spoken introduction — see extract_from_video.py) with
     pyannoteAI's voice-based match. Context is treated as the primary
@@ -120,8 +159,10 @@ def resolve_speaker_identity(context_signal: str, context_confidence: str, conte
     reinforcement and tie-breaker, and the safety check against a
     misleading title or mistaken introduction.
 
-    enrolled_voiceprint_ids: dict of {speaker_label: voiceprint_id} for
-    everyone already enrolled.
+    enrolled_voiceprints: dict of {speaker_label: voiceprint_string} for
+    everyone already enrolled (pyannoteAI has no server-side speaker
+    registry — we own storing and re-submitting the actual voiceprint
+    values every time, not just an id).
 
     Returns one of:
       - auto_assign: confident enough to publish without a human check
@@ -134,32 +175,32 @@ def resolve_speaker_identity(context_signal: str, context_confidence: str, conte
       - unknown: nothing usable
     """
     has_context = context_signal not in (None, "none", "voice_only_no_context") and context_confidence == "high"
-    already_enrolled = context_name in enrolled_voiceprint_ids if context_name else False
+    already_enrolled = context_name in enrolled_voiceprints if context_name else False
 
     voice_result = None
-    if enrolled_voiceprint_ids:
-        voice_result = identify_segment(audio_clip_url, list(enrolled_voiceprint_ids.values()))
+    if enrolled_voiceprints:
+        voice_result = identify_segment(audio_clip_url, enrolled_voiceprints)
 
     if has_context and not already_enrolled:
         # Strong context signal (title/on-screen/introduction), person not
         # enrolled yet: assign now, bootstrap enrollment, flag for a
         # non-blocking spot-check rather than requiring confirmation before
         # publishing — this is what keeps the workflow light.
-        voiceprint_id = enroll_speaker(context_name, audio_clip_url)
+        voiceprint = enroll_speaker(context_name, audio_clip_url)
         return {
             "decision": "auto_assign_new_enrollment",
             "speaker_label": context_name,
             "evidence": f"context:{context_signal}",
-            "voiceprint_id": voiceprint_id,
+            "voiceprint": voiceprint,
             "spot_check_recommended": True,
         }
 
     if has_context and already_enrolled and voice_result:
-        if voice_result["decision"] == "auto_assign" and voice_result["speaker_id"] == enrolled_voiceprint_ids[context_name]:
+        if voice_result["decision"] == "auto_assign" and voice_result["speaker_id"] == context_name:
             # Context and voice agree — highest-confidence case.
             return {"decision": "auto_assign", "speaker_label": context_name,
                     "evidence": f"context:{context_signal}+voice_agree", "score": voice_result["score"]}
-        if voice_result["decision"] in ("auto_assign", "needs_confirmation") and voice_result["speaker_id"] != enrolled_voiceprint_ids[context_name]:
+        if voice_result["decision"] in ("auto_assign", "needs_confirmation") and voice_result["speaker_id"] != context_name:
             # Context says one person, voice matches a DIFFERENT enrolled
             # person. Real disagreement — never auto-resolve this silently.
             return {"decision": "needs_confirmation", "speaker_label": context_name,

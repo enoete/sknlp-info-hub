@@ -108,6 +108,10 @@ RESPONSE_SCHEMA = {
                         "enum": SENTIMENTS,
                         "description": "Tone of the claim as stated: 'positive'/'negative' for a straightforward good/bad framing, 'critical' specifically for an opposition_statement leveling criticism at the government, 'neutral' for a plain factual statement with no evaluative framing."
                     },
+                    "citizen_impact": {
+                        "type": "string",
+                        "description": "One plain-language sentence, written directly to a resident of St. Kitts and Nevis, on what this concretely means for them day-to-day (e.g. 'Means shorter wait times at JNF General Hospital's emergency department'). Only what's actually implied by the claim itself — don't invent a benefit or harm the video didn't state or clearly imply. Empty string if the claim is too abstract to translate into a concrete citizen-facing effect."
+                    },
                     "start_timestamp": {"type": "string", "description": "MM:SS — where this claim starts in the video"},
                     "extraction_confidence": {
                         "type": "string",
@@ -115,7 +119,7 @@ RESPONSE_SCHEMA = {
                         "description": "low if the claim is vague, ambiguous, or you're inferring rather than reading a direct statement"
                     }
                 },
-                "required": ["stance", "title", "summary", "category", "sentiment", "start_timestamp", "extraction_confidence"]
+                "required": ["stance", "title", "summary", "category", "sentiment", "citizen_impact", "start_timestamp", "extraction_confidence"]
             }
         }
     },
@@ -181,7 +185,7 @@ Never invent a claim that isn't actually stated in the video.
 """
 
 
-def extract(youtube_url: str, source_type: str, category_hint: str, model: str = "gemini-2.5-flash") -> dict:
+def extract(youtube_url: str, source_type: str, category_hint: str, model: str = "gemini-3.6-flash") -> dict:
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     metadata = fetch_video_metadata(youtube_url)
 
@@ -215,6 +219,7 @@ def to_review_queue_rows(extraction: dict, youtube_url: str, source_type: str) -
             "summary": claim["summary"],
             "category": claim["category"],
             "sentiment": claim["sentiment"],
+            "citizen_impact": claim["citizen_impact"],
             "extraction_confidence": claim["extraction_confidence"],
             "source_origin_url": youtube_url,
             "source_type": source_type,
