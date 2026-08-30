@@ -276,6 +276,26 @@ Three outlets confirmed and characterized:
 feed availability at each (`/feed/` is the WordPress default path, likely
 present but not yet verified) before deciding on `public_rss` vs. scraping.
 
+## Fourth source category: independent political commentary (confirmed)
+
+Distinct from the press outlets above — not a news organization, one
+person's own political commentary — so it gets its own category rather
+than being folded into "local news coverage."
+
+- **Talk SKN — Kyle Flanders** (YouTube, `@TalkSKN`, channel ID
+  `UCCFwjEhC4u8gzeJAUOpZFSw`) — verified via a live fetch of the channel's
+  own "About" text: *"On this channel I will give you my views on the
+  political landscape and news on the island of St Kitts and Nevis."*
+  Independent commentator, not affiliated with any party — that's why the
+  channel is registered as `source_type = 'third_party'` rather than
+  `'opposition'` at the `sources_registry` level, even though individual
+  claims extracted from it can still carry `stance = 'opposition_statement'`
+  when warranted (stance is judged per-claim by the ingestion agent, not
+  inherited wholesale from the source's registry classification — the same
+  principle that keeps SKNIS from being tagged opposition just because a
+  claim quotes criticism). `tier = 'third_party'`, `detection_method =
+  'public_rss'` (RSS: `youtube.com/feeds/videos.xml?channel_id=UCCFwjEhC4u8gzeJAUOpZFSw`).
+
 ## Copyright / display rule for news sources
 
 Store only short extracts/summaries plus a link back to the original
