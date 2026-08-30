@@ -30,13 +30,7 @@ interface ChatMessage {
   errorText?: string;
 }
 
-const SUGGESTIONS = [
-  'Did the minimum wage actually increase?',
-  'Did the government build a new international airport?',
-  "Is it true crime has doubled since 2022?"
-];
-
-export default function ChatClient() {
+export default function ChatClient({ suggestions }: { suggestions: string[] }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -138,7 +132,7 @@ export default function ChatClient() {
         </div>
 
         <div className={styles.suggestionRow}>
-          {SUGGESTIONS.map((s) => (
+          {suggestions.map((s) => (
             <span key={s} className={styles.suggestion} onClick={() => ask(s)}>
               {s}
             </span>
