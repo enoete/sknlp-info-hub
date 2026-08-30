@@ -108,9 +108,13 @@ RESPONSE_SCHEMA = {
                         "enum": SENTIMENTS,
                         "description": "Tone of the claim as stated: 'positive'/'negative' for a straightforward good/bad framing, 'critical' specifically for an opposition_statement leveling criticism at the government, 'neutral' for a plain factual statement with no evaluative framing."
                     },
-                    "citizen_impact": {
+                    "citizen_impact_suggested": {
                         "type": "string",
-                        "description": "One plain-language sentence, written directly to a resident of St. Kitts and Nevis, on what this concretely means for them day-to-day (e.g. 'Means shorter wait times at JNF General Hospital's emergency department'). Only what's actually implied by the claim itself — don't invent a benefit or harm the video didn't state or clearly imply. Empty string if the claim is too abstract to translate into a concrete citizen-facing effect."
+                        "description": "DRAFT ONLY — a human must review and explicitly promote this before it becomes the published citizen_impact; never auto-published verbatim (see schema.sql). One plain-language sentence, written directly to a resident of St. Kitts and Nevis, on what this concretely means for them day-to-day (e.g. 'Means shorter wait times at JNF General Hospital's emergency department'). Only what's actually implied by the claim itself — don't invent a benefit or harm the video didn't state or clearly imply. Empty string if the claim is too abstract to translate into a concrete citizen-facing effect."
+                    },
+                    "event_date_suggested": {
+                        "type": "string",
+                        "description": "DRAFT ONLY — a human must review and explicitly confirm/edit this before it becomes the published event_date; never auto-promoted (see schema.sql, and the review queue's planned 'confirm suggested date' card). ISO format (YYYY-MM-DD) if the video explicitly states the date this event/policy took effect or occurred. Empty string if no explicit date is stated — never infer or guess from the video's upload date alone."
                     },
                     "start_timestamp": {"type": "string", "description": "MM:SS — where this claim starts in the video"},
                     "extraction_confidence": {
@@ -119,7 +123,7 @@ RESPONSE_SCHEMA = {
                         "description": "low if the claim is vague, ambiguous, or you're inferring rather than reading a direct statement"
                     }
                 },
-                "required": ["stance", "title", "summary", "category", "sentiment", "citizen_impact", "start_timestamp", "extraction_confidence"]
+                "required": ["stance", "title", "summary", "category", "sentiment", "citizen_impact_suggested", "event_date_suggested", "start_timestamp", "extraction_confidence"]
             }
         }
     },
@@ -219,7 +223,8 @@ def to_review_queue_rows(extraction: dict, youtube_url: str, source_type: str) -
             "summary": claim["summary"],
             "category": claim["category"],
             "sentiment": claim["sentiment"],
-            "citizen_impact": claim["citizen_impact"],
+            "citizen_impact_suggested": claim["citizen_impact_suggested"],
+            "event_date_suggested": claim["event_date_suggested"],
             "extraction_confidence": claim["extraction_confidence"],
             "source_origin_url": youtube_url,
             "source_type": source_type,

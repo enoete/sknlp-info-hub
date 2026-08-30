@@ -162,7 +162,16 @@ CREATE TABLE claims (
     summary         TEXT NOT NULL,
     category        TEXT,
     sentiment       TEXT CHECK (sentiment IN ('positive','neutral','negative','critical')),
+    -- Only ever set via explicit human confirmation/edit — including
+    -- confirming event_date_suggested below via the review queue's planned
+    -- "confirm suggested date" card (see CLAUDE.md). Never written directly
+    -- by the ingestion agent, same discipline as citizen_impact.
     event_date      DATE,
+    -- The ingestion agent's draft of the above (extract_from_video.py,
+    -- RESPONSE_SCHEMA.event_date_suggested) — an ISO date parsed from an
+    -- explicit statement in the video, never inferred from upload date.
+    -- Never copied into event_date automatically.
+    event_date_suggested DATE,
     year            INT,
     -- Full-text search (no Voyage AI/embeddings key yet — this is the real
     -- retrieval path for "Ask the Record" until embedding-based similarity
@@ -176,10 +185,20 @@ CREATE TABLE claims (
                     ) STORED,
     extracted_by    TEXT NOT NULL DEFAULT 'llm_agent',  -- 'llm_agent', 'gemini_agent', or 'manual'
     extraction_confidence TEXT,                      -- 'high' / 'medium' / 'low', set by the ingestion agent; null for manual entries
-    -- Plain-language "what this means for you" — deliberately written per
-    -- claim, never auto-generated from the summary. NULL means it still
-    -- needs a human/deliberate pass, not that it was skipped by design.
+    -- Plain-language "what this means for you", shown publicly on the
+    -- Dashboard. Only ever set via explicit human authorship or a human
+    -- promoting citizen_impact_suggested below — never written directly
+    -- by the ingestion agent. NULL means it still needs a human/deliberate
+    -- pass, not that it was skipped by design.
     citizen_impact  TEXT,
+    -- The ingestion agent's draft of the above (extract_from_video.py,
+    -- RESPONSE_SCHEMA.citizen_impact_suggested). Never rendered publicly
+    -- and never copied into citizen_impact automatically — a human in the
+    -- review queue reads this, edits it if needed, and explicitly promotes
+    -- it. Keeping this as a separate column (rather than writing straight
+    -- to citizen_impact) is what makes "never auto-generated" enforceable
+    -- instead of just a comment nobody notices at the call site.
+    citizen_impact_suggested TEXT,
     review_status   review_status NOT NULL DEFAULT 'pending_review',
     reviewed_by     UUID REFERENCES admin_users(id),
     reviewed_at     TIMESTAMPTZ,

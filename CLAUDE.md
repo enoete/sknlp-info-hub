@@ -181,6 +181,50 @@ The Quick Add tool (`design-reference/quick-add.html`) remains useful as a
 fallback for Facebook content and for anything the agent gets wrong or
 skips — don't delete it.
 
+**Schema sync is a required step, not an afterthought.** Whenever a new
+column is added to `claims`, explicitly check whether
+`extract_from_video.py`'s `RESPONSE_SCHEMA` needs the same field — don't
+assume the ingestion script will get updated "eventually" just because
+the DB and UI did. This already happened once: `citizen_impact` was added
+to `schema.sql` and rendered on the Dashboard, but nobody went back and
+added it to `RESPONSE_SCHEMA`, so the extraction agent had no way to ever
+populate it — caught only when the field was later spot-checked directly
+against a real extraction run. Treat this with the same discipline as the
+political-role forward-reference checks elsewhere in this doc (see
+"Political volatility" above): a new writable `claims` column is not done
+until `extract_from_video.py` has been checked against it, even if the
+honest answer is "this field doesn't apply to model extraction, skip it
+on purpose" — silence/omission is the failure mode to avoid, not any
+particular answer.
+
+Cheap automated backstop for the above: `tests/test_extraction_schema_sync.py`
+diffs `claims`' writable columns (parsed from `schema.sql`) against
+`RESPONSE_SCHEMA`'s declared fields and fails on any column that's neither
+extracted nor explicitly excluded with a reason. Run it after any `claims`
+schema change: `python3 tests/test_extraction_schema_sync.py`. It's already
+caught one real gap (`event_date` had no extraction coverage and no
+documented reason) — see below for how that was resolved.
+
+**Draft fields need a review-queue confirmation affordance — don't let the
+ingestion agent write straight to a human-authorship-only column.**
+`citizen_impact` and `event_date` are both human-confirmed-only columns
+(see their comments in `schema.sql`); the ingestion agent only ever
+proposes into a parallel `*_suggested` column
+(`citizen_impact_suggested`, `event_date_suggested`) and never writes the
+real column directly. That split is only meaningful if the review queue
+actually surfaces the suggestion for a human to act on — right now
+neither does. The admin review queue UI needs a lightweight "confirm
+suggested date" affordance alongside the claim review card — same pattern
+as the "confirm this speaker" card already speced above (see "Speaker
+identification — enrollment with active learning"): show
+`event_date_suggested`, and three actions — confirm / edit / reject —
+only writing to `claims.event_date` once a human acts. `citizen_impact_suggested`
+needs the identical treatment (it has the Dashboard-rendering half done
+already, but no promotion affordance yet). Add both as queue-item
+elements alongside the claim-review and confirm-speaker cards. Not built
+yet — documented here so it isn't lost, same as the citizen_impact
+rendering gap was before it got built.
+
 ## Known sources for `sources_registry` seed data
 
 - `@StKittsNevisLabourParty` (YouTube) — `source_type = 'official_party'`, `tier = 'owned'`
