@@ -132,16 +132,25 @@ def ingest_one_article(conn, registry: dict, url: str, dry_run: bool = False, kn
 
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
 
+    # ingestion_channel enum: 'sknis' is specific to sknis.gov.kn itself;
+    # any other written-article registry row (WINN FM, Freedom FM, ...)
+    # is the generic 'press_release' bucket -- confirmed needed the hard
+    # way testing this same script against WINN FM/Freedom FM 2026-08-31,
+    # which would otherwise have mislabeled every article from either as
+    # literally "sknis" channel.
+    channel = "sknis" if registry["platform"] == "sknis" else "press_release"
+
     with conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             primary_speaker = (extraction.get("primary_speaker") or "").strip() or None
             cur.execute(
                 """INSERT INTO sources (registry_id, source_type, channel, title, speaker_org, speaker_name, origin_url, published_at)
-                   VALUES (%s, %s, 'sknis', %s, %s, %s, %s, %s)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                    RETURNING id""",
                 (
                     registry["id"],
                     source_type,
+                    channel,
                     article["title"],
                     registry["label"],
                     primary_speaker,
