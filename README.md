@@ -89,11 +89,11 @@ deadline.
 1. Dashboard (claim grid + filters) — reads `claims` + `sources`, no auth needed
 2. Claim detail view — citations + proof documents + related opposition claim
 3. Ask the Record chatbot — wire `chatbot_system_prompt.md` to the Anthropic API with retrieval over `claims`
-4. Ingestion agent — `ingestion/extract_from_video.py` wired to actually
-   write `pending_review` rows into the database (currently prints JSON to
-   stdout; needs a DB-writing wrapper). Run it against a test batch from
-   each registered channel before trusting it at volume — accuracy on
-   local speech patterns needs real verification, not assumption.
+4. Ingestion agent — `run_ingestion.py`/`run_channel_discovery.py` write
+   `pending_review` rows into the database (see "Ingestion setup" below).
+   Run it against a test batch from each registered channel before
+   trusting it at volume — accuracy on local speech patterns needs real
+   verification, not assumption.
 5. Opposition Watch — reuse the clustering/filter pattern already in the mockup
 6. Calendar + Speakers — lower priority, can stay closer to mockup fidelity
 7. Admin review queue — this now matters more than originally planned,
@@ -103,14 +103,41 @@ deadline.
 
 ## Ingestion setup
 
+The system Python here is PEP 668 "externally managed" (Debian/Ubuntu) —
+a bare `pip install` fails. Use a venv, not `--break-system-packages`
+(that risks the droplet's other apps' system Python):
+
 ```bash
 cd ingestion
-pip install google-genai
+python3 -m venv venv
+./venv/bin/pip install google-genai psycopg2-binary requests
 export GEMINI_API_KEY=your_key_here
-python extract_from_video.py "https://youtube.com/watch?v=XXXX" --source-type official_party
+export DATABASE_URL=postgresql://sknlp_app:PASSWORD@127.0.0.1:5433/sknlp_info_hub
 ```
 
-Outputs JSON to stdout for now — the next step is a small wrapper that
-takes that JSON and writes it into the database as `pending_review` rows,
-plus a scheduled job that runs this against each `active` row in
-`sources_registry` on its configured poll frequency.
+Two entrypoints, both writing real `pending_review` rows (+
+`transcript_segments` for deep-linking) into the database, never straight
+to `stdout` only:
+
+```bash
+# One already-known video URL (a single_video-type sources_registry row):
+./venv/bin/python3 run_ingestion.py --registry-id <uuid>
+
+# Discover + ingest new uploads from a registered YouTube channel, capped
+# at --max-new per run (default 3) so a channel with years of backlog
+# doesn't get force-fed in one sweep:
+./venv/bin/python3 run_channel_discovery.py --registry-id <uuid> --max-new 3
+```
+
+Both respect the Aug 5, 2022 scope cutoff (`scope_config.py`) and share
+the same safety-verified write path (`ingest_one_video` in
+`run_ingestion.py`) — every claims row is confirmed `pending_review`
+before its transaction commits, or the whole run rolls back.
+
+Not yet built: a scheduled job running `run_channel_discovery.py` against
+every `youtube_channel`-type `sources_registry` row automatically, and
+any discovery/extraction path for `website`-type rows (SKNIS press
+releases, WINN FM, Freedom FM, ZIZ news, etc.) — only YouTube channels
+are covered so far. Run it against a test batch from each registered
+channel before trusting it at volume — accuracy on local speech patterns
+needs real verification, not assumption.

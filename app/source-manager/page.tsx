@@ -55,8 +55,12 @@ export default async function SourceManagerPage() {
       </div>
 
       <div className={styles.stageNote}>
-        Stage 2: add a source (writes to <code>sources_registry</code> only). Edit/delete/run
-        actions from the mockup aren&apos;t wired up yet — see{' '}
+        Stage 2: add a source (writes to <code>sources_registry</code> only). Edit/delete aren&apos;t
+        wired up yet. YouTube channel discovery is real (
+        <code>ingestion/run_channel_discovery.py --registry-id &lt;id&gt;</code>, resolves the channel,
+        checks its recent uploads, extracts and writes new claims as <code>pending_review</code>) but
+        runs from the command line only — no web &quot;Run&quot; button yet, since the Python ingestion
+        environment isn&apos;t part of this app&apos;s Docker image. See{' '}
         <code>design-reference/source-manager-mockup.html</code> for the full planned view.
       </div>
 

@@ -6,3 +6,5 @@ npm-debug.log*
 .DS_Store
 __pycache__/
 *.pyc
+ingestion/venv/
+ingestion/logs/
