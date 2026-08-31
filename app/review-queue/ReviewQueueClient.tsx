@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import styles from './review-queue.module.css';
 import type { ReviewQueueClaim } from '@/app/lib/reviewQueue';
 
@@ -11,6 +11,7 @@ type Decision =
   | { kind: 'error'; message: string };
 
 type StatusFilter = 'all' | 'pending_review' | 'approved' | 'rejected';
+const ALL_CHANNELS = 'all';
 
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -19,11 +20,38 @@ const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'rejected', label: 'Rejected' }
 ];
 
+// Where a source actually entered our system — youtube/sknis/press_release/
+// social_post/admin_upload/manual_entry (schema.sql's ingestion_channel
+// enum). Distinct from source_type (official/opposition/press, already
+// shown via the stance tag) and from sources_registry.platform (not
+// always present — plenty of claims have no registry row behind them).
+const CHANNEL_LABELS: Record<string, string> = {
+  youtube: 'YouTube',
+  sknis: 'SKNIS',
+  press_release: 'Press Release',
+  social_post: 'Social Post',
+  admin_upload: 'Admin Upload',
+  manual_entry: 'Manual Entry'
+};
+
+function channelLabel(channel: string): string {
+  return CHANNEL_LABELS[channel] ?? channel;
+}
+
 export default function ReviewQueueClient({ claims: initialClaims }: { claims: ReviewQueueClaim[] }) {
   const [claims, setClaims] = useState(initialClaims);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [channelFilter, setChannelFilter] = useState<string>(ALL_CHANNELS);
   const [decided, setDecided] = useState<Record<string, Decision>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
+
+  // Only ever shows channels actually present in the data (same rule as
+  // Dashboard's category pills / Opposition Watch's sector pills) — never
+  // a static list of every enum value regardless of whether anything uses it.
+  const channels = useMemo(
+    () => Array.from(new Set(claims.map((c) => c.channel))).sort((a, b) => channelLabel(a).localeCompare(channelLabel(b))),
+    [claims]
+  );
 
   const counts = {
     all: claims.length,
@@ -31,7 +59,14 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
     approved: claims.filter((c) => c.review_status === 'approved').length,
     rejected: claims.filter((c) => c.review_status === 'rejected').length
   };
-  const filtered = claims.filter((c) => statusFilter === 'all' || c.review_status === statusFilter);
+  const channelCounts: Record<string, number> = {};
+  for (const c of claims) channelCounts[c.channel] = (channelCounts[c.channel] ?? 0) + 1;
+
+  const filtered = claims.filter(
+    (c) =>
+      (statusFilter === 'all' || c.review_status === statusFilter) &&
+      (channelFilter === ALL_CHANNELS || c.channel === channelFilter)
+  );
 
   async function decide(id: string, action: 'approve' | 'reject' | 'unapprove') {
     setPending((p) => ({ ...p, [id]: true }));
@@ -95,6 +130,23 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
           </span>
         ))}
       </div>
+      <div className={styles.filterRow}>
+        <span
+          className={`${styles.pill} ${channelFilter === ALL_CHANNELS ? styles.pillActive : ''}`}
+          onClick={() => setChannelFilter(ALL_CHANNELS)}
+        >
+          All sources ({claims.length})
+        </span>
+        {channels.map((ch) => (
+          <span
+            key={ch}
+            className={`${styles.pill} ${channelFilter === ch ? styles.pillActive : ''}`}
+            onClick={() => setChannelFilter(ch)}
+          >
+            {channelLabel(ch)} ({channelCounts[ch]})
+          </span>
+        ))}
+      </div>
 
       {filtered.length === 0 ? (
         <div className={styles.emptyState}>No claims match this filter.</div>
@@ -111,6 +163,9 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
                 </span>
                 <span className={styles.tag} style={{ background: 'var(--paper-2)', color: 'var(--muted)' }}>
                   {c.category ?? 'Uncategorized'}
+                </span>
+                <span className={styles.tag} style={{ background: 'var(--gold-tint)', color: 'var(--gold-ink)' }}>
+                  {channelLabel(c.channel)}
                 </span>
                 <span
                   className={`${styles.tag} ${

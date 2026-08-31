@@ -19,6 +19,7 @@ export interface ReviewQueueClaim {
   origin_url: string;
   speaker_org: string;
   source_type: string;
+  channel: string;
   created_at: string;
 }
 
@@ -39,7 +40,7 @@ export async function getReviewQueueClaims(): Promise<ReviewQueueClaim[]> {
          c.citizen_impact_suggested,
          to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
          to_char(c.event_date_suggested, 'YYYY-MM-DD') AS event_date_suggested,
-         s.title AS source_title, s.origin_url, s.speaker_org, s.source_type,
+         s.title AS source_title, s.origin_url, s.speaker_org, s.source_type, s.channel,
          c.created_at,
          (SELECT ts.start_seconds
           FROM claim_transcript_segments cts
