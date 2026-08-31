@@ -411,6 +411,8 @@ built, not from memory. Two valid states only:
 | `pg_trgm` extension | ✅ Migrated | 2026-08-31 |
 | `claims.year` — **removed** (was drifting out of sync with `event_date`; Dashboard now derives year via `EXTRACT(YEAR FROM event_date)` at query time in `getDashboardClaims`/`getDashboardStats`, single source of truth) | ✅ Migrated | 2026-08-31 |
 | `idx_claims_event_date_category` (replaces `idx_claims_year_category`) | ✅ Migrated | 2026-08-31 |
+| `claims.accomplishment_type` (sub-classification within `stance='accomplishment'` — see "Accomplishment sub-typing" below) | ✅ Migrated | 2026-08-31 |
+| `claims.completes_claim_id` (self-ref, links a later claim to the earlier initiative/decision it completes — see "Initiative follow-through tracking" below) | ✅ Migrated | 2026-08-31 |
 
 One-time full audit completed 2026-08-31, prompted by the `chat_queries`
 gap: every table and column in `schema.sql` cross-checked
@@ -446,6 +448,87 @@ For the demo, seed the database directly from the real 113-item
 accomplishment list rather than building the ingestion agent — that's a
 phase-2 concern. Manual seed data closely matching real SKNLP announcements
 is fine and expected for a proof of concept.
+
+## Accomplishment sub-typing (`claims.accomplishment_type`)
+
+Decision (2026-08-31): `stance = 'accomplishment'` had been doing double
+duty as both "whose side is this claim on" and "what kind of win is
+this" — every government-side claim rendered as an identical
+"ACCOMPLISHMENT" badge whether it was a finished project, a policy
+decision, a strategic commitment, or something merely in progress.
+`claims.accomplishment_type` is the honest subtype, one of
+**Accomplishment / Policy Decision / Strategic Decision / Ongoing
+Initiative** (see the enum's definitions in
+`ingestion/extract_from_video.py`'s `RESPONSE_SCHEMA.accomplishment_type`
+description, and `app/lib/accomplishmentType.ts` for the shared frontend
+constant). `stance` itself is untouched — it still means only
+"government/party side vs opposition side," so no existing stance-based
+filtering logic changed.
+
+- Written directly by the ingestion agent (same tier as `category`), not
+  gated behind a `*_suggested` human-confirmation column — it's a bounded
+  classification call, not a freeform narrative judgment.
+- **Editable after the fact.** The taxonomy is a judgment call and will
+  sometimes be wrong; the Review Queue (`app/review-queue/ReviewQueueClient.tsx`)
+  has a live dropdown on every accomplishment-stance claim, in any
+  review_status (pending or already-approved/live) — no need to
+  unapprove-and-re-review just to fix a label. Backed by
+  `PATCH /api/claims/[id]/accomplishment-type` → `updateAccomplishmentType()`
+  in `app/lib/reviewQueue.ts`.
+- The ~97 claims approved before this field existed were retroactively
+  classified via a one-time Gemini pass
+  (`ingestion/backfill_accomplishment_type.py`, title+summary only, no
+  video) — rerun it (it's idempotent, only touches
+  `accomplishment_type IS NULL` rows) if a large batch of old claims ever
+  needs reclassifying again; don't hand-classify at volume.
+- Rendered on the Dashboard (`app/DashboardClient.tsx`), Timeline
+  (`app/timeline/TimelineClient.tsx`), Claim Detail
+  (`app/claim/[id]/page.tsx`), and fed into the Ask the Record context
+  block (`app/api/ask/route.ts`) with an explicit system-prompt rule
+  (`app/api/ask/system-prompt.ts` rule 5a / `chatbot_system_prompt.md`)
+  not to describe an 'Ongoing Initiative' or a 'Policy'/'Strategic
+  Decision' as completed/delivered — only 'Accomplishment' gets that
+  language.
+
+## Initiative follow-through tracking (`claims.completes_claim_id`)
+
+Decision (2026-08-31): an 'Ongoing Initiative' / 'Strategic Decision' /
+'Policy Decision' claim (see above) can look perpetually unfinished if
+nothing ever connects it to the later claim reporting its completion.
+`claims.completes_claim_id` is a nullable self-reference on the **newer**
+claim, pointing back at the **earlier** one it fulfills (e.g. a later
+"desalination plant completed" claim's `completes_claim_id` points at the
+earlier "groundbreaking held" claim).
+
+- **Manual linking only, admin-driven** — same "flag for a human, never
+  auto-resolve" posture used elsewhere in this project (see the
+  speaker-identity disagreement rule above). No similarity/embedding
+  matching attempts to auto-link claims; an admin searches for and picks
+  the earlier claim via the Review Queue's "link as completing an earlier
+  claim" control, backed by `GET /api/claims/search` (title search over
+  approved accomplishment claims,
+  `searchAccomplishmentClaims()` in `app/lib/reviewQueue.ts`) and
+  `PATCH /api/claims/[id]/completes` (`updateCompletesClaim()`).
+- **Reflected in both directions** on the Claim Detail page
+  (`app/claim/[id]/page.tsx`'s "Progress" block): the older claim shows
+  "Since completed — see [link]", the newer claim shows "Completes —
+  see [link]".
+- **Dashboard**: an older claim's card shows a green "Since completed"
+  banner linking to the newer one the moment an admin links them — see
+  `getDashboardClaims()`'s `completed_by_*` fields in `app/lib/claims.ts`
+  and `.completedBanner` in `app/DashboardClient.tsx`.
+- **Ask the Record**: `app/lib/retrieve.ts` joins both directions
+  (`completes_title`/`completed_by_title`) into every retrieved claim, and
+  `app/api/ask/route.ts` appends a `STATUS UPDATE: this was later
+  completed...` line to the context block when present. System-prompt
+  rule 5b instructs the model to report the up-to-date status rather than
+  only the stale original claim — verified live: a deliberately
+  mismatched test link (an unrelated 2005 claim linked as if it completed
+  a 2024 desalination-plant claim) was correctly recognized by the model
+  as irrelevant and NOT reported as confirmation of completion, rather
+  than blindly trusting the link. That's the safety property this feature
+  depends on — never remove or weaken rule 5b's "never claim something
+  was completed unless a linked claim actually says so" instruction.
 
 ## What can be mocked/stubbed for the demo, what can't
 

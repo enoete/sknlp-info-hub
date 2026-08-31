@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import styles from './review-queue.module.css';
-import type { ReviewQueueClaim } from '@/app/lib/reviewQueue';
+import type { ReviewQueueClaim, ClaimSearchResult } from '@/app/lib/reviewQueue';
+import { accomplishmentTypeLabel, ACCOMPLISHMENT_TYPES } from '@/app/lib/accomplishmentType';
 
 type Decision =
   | { kind: 'approved'; citizenImpactCopied: boolean; eventDateCopied: boolean }
@@ -88,6 +89,104 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
       setEditError(String(err));
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  // Accomplishment-type reclassification — a plain dropdown that saves on
+  // change (no separate edit/save/cancel step needed for a small enum,
+  // unlike the free-text source URL editor above).
+  const [typeSaving, setTypeSaving] = useState<Record<string, boolean>>({});
+  const [typeError, setTypeError] = useState<Record<string, string>>({});
+
+  async function updateType(claimId: string, newType: string) {
+    setTypeSaving((s) => ({ ...s, [claimId]: true }));
+    setTypeError((e) => ({ ...e, [claimId]: '' }));
+    try {
+      const res = await fetch(`/api/claims/${claimId}/accomplishment-type`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accomplishment_type: newType })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTypeError((e) => ({ ...e, [claimId]: data.error || `Request failed (${res.status})` }));
+        return;
+      }
+      setClaims((cs) => cs.map((c) => (c.id === claimId ? { ...c, accomplishment_type: data.accomplishment_type } : c)));
+    } catch (err) {
+      setTypeError((e) => ({ ...e, [claimId]: String(err) }));
+    } finally {
+      setTypeSaving((s) => ({ ...s, [claimId]: false }));
+    }
+  }
+
+  // "This completes an earlier claim" linking (see schema.sql's
+  // completes_claim_id) — search-and-pick rather than free text, so the
+  // link always points at a real claim id.
+  const [linkingClaimId, setLinkingClaimId] = useState<string | null>(null);
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkResults, setLinkResults] = useState<ClaimSearchResult[]>([]);
+  const [linkSearching, setLinkSearching] = useState(false);
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  function startLinking(claimId: string) {
+    setLinkingClaimId(claimId);
+    setLinkQuery('');
+    setLinkResults([]);
+    setLinkError(null);
+  }
+
+  function cancelLinking() {
+    setLinkingClaimId(null);
+    setLinkQuery('');
+    setLinkResults([]);
+    setLinkError(null);
+  }
+
+  async function searchLink(claimId: string) {
+    if (!linkQuery.trim()) {
+      setLinkResults([]);
+      return;
+    }
+    setLinkSearching(true);
+    try {
+      const res = await fetch(`/api/claims/search?q=${encodeURIComponent(linkQuery)}&exclude=${claimId}`);
+      const data = await res.json();
+      setLinkResults(res.ok ? data.results : []);
+    } catch {
+      setLinkResults([]);
+    } finally {
+      setLinkSearching(false);
+    }
+  }
+
+  async function saveLink(claimId: string, completesClaimId: string | null, completesTitle: string | null) {
+    setLinkSaving(true);
+    setLinkError(null);
+    try {
+      const res = await fetch(`/api/claims/${claimId}/completes`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ completes_claim_id: completesClaimId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLinkError(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      setClaims((cs) =>
+        cs.map((c) =>
+          c.id === claimId
+            ? { ...c, completes_claim_id: data.completes_claim_id, completes_claim_title: completesTitle }
+            : c
+        )
+      );
+      cancelLinking();
+    } catch (err) {
+      setLinkError(String(err));
+    } finally {
+      setLinkSaving(false);
     }
   }
 
@@ -204,9 +303,24 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
           return (
             <div className={styles.card} key={c.id}>
               <div className={styles.metaRow}>
-                <span className={`${styles.tag} ${c.stance === 'opposition_statement' ? styles.tagOpposition : styles.tagAccomplishment}`}>
-                  {c.stance === 'opposition_statement' ? 'Opposition' : 'Accomplishment'}
-                </span>
+                {c.stance === 'opposition_statement' ? (
+                  <span className={`${styles.tag} ${styles.tagOpposition}`}>Opposition</span>
+                ) : (
+                  <select
+                    className={`${styles.tag} ${styles.tagAccomplishment} ${styles.typeSelect}`}
+                    value={c.accomplishment_type ?? ''}
+                    disabled={!!typeSaving[c.id]}
+                    onChange={(e) => updateType(c.id, e.target.value)}
+                    title="Reclassify if this doesn't quite fit"
+                  >
+                    {!c.accomplishment_type && <option value="">Accomplishment (unset)</option>}
+                    {ACCOMPLISHMENT_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <span className={styles.tag} style={{ background: 'var(--paper-2)', color: 'var(--muted)' }}>
                   {c.category ?? 'Uncategorized'}
                 </span>
@@ -225,9 +339,64 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
                   {c.review_status === 'pending_review' ? 'Pending review' : c.review_status}
                 </span>
               </div>
+              {typeError[c.id] && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{typeError[c.id]}</div>}
 
               <h3 className={styles.title}>{c.title}</h3>
               <p className={styles.summary}>{c.summary}</p>
+
+              {c.stance === 'accomplishment' && (
+                <div className={styles.srcLine}>
+                  {c.completes_claim_id ? (
+                    <>
+                      ✓ Completes:{' '}
+                      <a href={`/claim/${c.completes_claim_id}`} target="_blank" rel="noreferrer">
+                        {c.completes_claim_title ?? 'linked claim'}
+                      </a>{' '}
+                      &middot;{' '}
+                      <span className={styles.editLink} onClick={() => saveLink(c.id, null, null)}>
+                        unlink
+                      </span>
+                    </>
+                  ) : (
+                    <span className={styles.editLink} onClick={() => startLinking(c.id)}>
+                      link as completing an earlier claim
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {linkingClaimId === c.id && (
+                <div className={styles.editBlock}>
+                  <input
+                    className={styles.editInput}
+                    value={linkQuery}
+                    onChange={(e) => setLinkQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchLink(c.id)}
+                    placeholder="Search earlier claim titles…"
+                    disabled={linkSaving}
+                  />
+                  <div className={styles.editActions}>
+                    <button className={`${styles.btn} ${styles.btnApprove}`} disabled={linkSearching} onClick={() => searchLink(c.id)}>
+                      {linkSearching ? 'Searching…' : 'Search'}
+                    </button>
+                    <button className={`${styles.btn} ${styles.btnReject}`} disabled={linkSaving} onClick={cancelLinking}>
+                      Cancel
+                    </button>
+                  </div>
+                  {linkResults.length > 0 && (
+                    <ul className={styles.linkResults}>
+                      {linkResults.map((r) => (
+                        <li key={r.id}>
+                          <span className={styles.editLink} onClick={() => saveLink(c.id, r.id, r.title)}>
+                            {r.title} {r.event_date ? `(${r.event_date})` : ''} — {accomplishmentTypeLabel(r.accomplishment_type)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {linkError && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{linkError}</div>}
+                </div>
+              )}
 
               <div className={styles.srcLine}>
                 {c.source_type} — {c.speaker_org} — {c.source_title} &middot;{' '}

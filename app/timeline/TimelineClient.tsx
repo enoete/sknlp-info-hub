@@ -5,6 +5,7 @@ import Link from 'next/link';
 import styles from './timeline.module.css';
 import type { TimelineClaim } from '@/app/lib/claims';
 import { getCategoryColor } from '@/app/lib/categoryColors';
+import { accomplishmentTypeLabel } from '@/app/lib/accomplishmentType';
 
 const ALL = 'all';
 const UNDATED_KEY = 'undated';
@@ -139,7 +140,7 @@ function TimelineItem({ claim }: { claim: TimelineClaim }) {
       <span className={styles.itemDot} style={{ borderColor: isOpposition ? 'var(--red)' : color.ink }} />
       <div className={styles.itemMeta}>
         <span className={`${styles.stanceTag} ${isOpposition ? styles.stanceOpposition : styles.stanceAccomplishment}`}>
-          {isOpposition ? 'Opposition' : 'Accomplishment'}
+          {isOpposition ? 'Opposition' : accomplishmentTypeLabel(claim.accomplishment_type)}
         </span>
         <span className={styles.catTag} style={{ background: color.tint, color: color.ink }}>
           {claim.category ?? 'Uncategorized'}

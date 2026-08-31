@@ -7,6 +7,7 @@ export interface RetrievedRow {
   title: string;
   summary: string;
   category: string | null;
+  accomplishment_type: string | null;
   event_date: string | null;
   source_type: string;
   source_title: string;
@@ -14,6 +15,14 @@ export interface RetrievedRow {
   speaker_org: string;
   origin_url: string;
   published_at: string | null;
+  // See schema.sql's completes_claim_id / DashboardClaim's
+  // completed_by_* fields — lets the chatbot report an initiative's
+  // up-to-date status (e.g. "launched in March 2023, completed as of
+  // [date]") instead of only ever quoting the older, now-stale claim.
+  completes_title: string | null;
+  completes_date: string | null;
+  completed_by_title: string | null;
+  completed_by_date: string | null;
 }
 
 // Real retrieval against Postgres full-text search — no embeddings (no
@@ -37,7 +46,7 @@ export async function retrieve(question: string): Promise<RetrievedRow[]> {
        FROM unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme
      )
      SELECT
-       c.id, c.stance, c.title, c.summary, c.category,
+       c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org,
        s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
@@ -45,10 +54,14 @@ export async function retrieve(question: string): Promise<RetrievedRow[]> {
         FROM claim_transcript_segments cts
         JOIN transcript_segments ts ON ts.id = cts.segment_id
         WHERE cts.claim_id = c.id
-        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds,
+       completes.title AS completes_title, to_char(completes.event_date, 'YYYY-MM-DD') AS completes_date,
+       done.title AS completed_by_title, to_char(done.event_date, 'YYYY-MM-DD') AS completed_by_date
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
+     LEFT JOIN claims completes ON completes.id = c.completes_claim_id
+     LEFT JOIN claims done ON done.completes_claim_id = c.id AND done.review_status = 'approved'
      CROSS JOIN q
      WHERE c.review_status = 'approved'
        AND q.tsq IS NOT NULL

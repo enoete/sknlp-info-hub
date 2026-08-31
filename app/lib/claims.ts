@@ -7,12 +7,20 @@ export interface DashboardClaim {
   title: string;
   summary: string;
   category: string | null;
+  accomplishment_type: string | null;
   citizen_impact: string | null;
   year: number | null;
   event_date: string | null;
   source_org: string;
   source_url: string;
   source_type: string;
+  // Set when a later approved claim links to this one via
+  // completes_claim_id (see schema.sql) -- i.e. this initiative/decision
+  // has since been completed. Null means either not yet completed, or no
+  // completing claim has been linked yet.
+  completed_by_claim_id: string | null;
+  completed_by_title: string | null;
+  completed_by_date: string | null;
 }
 
 export interface DashboardStats {
@@ -31,7 +39,7 @@ export interface DashboardStats {
 export async function getDashboardClaims(): Promise<DashboardClaim[]> {
   const { rows } = await pool.query<DashboardClaim & { source_start_seconds: number | null }>(
     `SELECT
-       c.id, c.title, c.summary, c.category, c.citizen_impact,
+       c.id, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
        EXTRACT(YEAR FROM c.event_date)::INT AS year,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.speaker_org AS source_org, s.origin_url AS source_url, s.source_type,
@@ -39,10 +47,13 @@ export async function getDashboardClaims(): Promise<DashboardClaim[]> {
         FROM claim_transcript_segments cts
         JOIN transcript_segments ts ON ts.id = cts.segment_id
         WHERE cts.claim_id = c.id
-        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds,
+       done.id AS completed_by_claim_id, done.title AS completed_by_title,
+       to_char(done.event_date, 'YYYY-MM-DD') AS completed_by_date
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
+     LEFT JOIN claims done ON done.completes_claim_id = c.id AND done.review_status = 'approved'
      WHERE c.review_status = 'approved' AND c.stance = 'accomplishment'
      ORDER BY c.event_date DESC NULLS LAST`
   );
@@ -103,13 +114,14 @@ export interface TimelineClaim {
   title: string;
   summary: string;
   category: string | null;
+  accomplishment_type: string | null;
   citizen_impact: string | null;
   event_date: string | null;
 }
 
 export async function getTimelineClaims(): Promise<TimelineClaim[]> {
   const { rows } = await pool.query<TimelineClaim>(
-    `SELECT c.id, c.stance, c.title, c.summary, c.category, c.citizen_impact,
+    `SELECT c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
             to_char(c.event_date, 'YYYY-MM-DD') AS event_date
      FROM claims c
      WHERE c.review_status = 'approved'
@@ -136,12 +148,19 @@ export interface ClaimProofDocument {
   document_dated_at: string | null;
 }
 
+export interface LinkedClaim {
+  id: string;
+  title: string;
+  event_date: string | null;
+}
+
 export interface ClaimDetail {
   id: string;
   stance: string;
   title: string;
   summary: string;
   category: string | null;
+  accomplishment_type: string | null;
   citizen_impact: string | null;
   event_date: string | null;
   review_status: string;
@@ -154,18 +173,25 @@ export interface ClaimDetail {
   source_count: number;
   proof_documents: ClaimProofDocument[];
   closest_record: OppositionRecord | null;
+  // See schema.sql's completes_claim_id -- `completes` is the earlier
+  // initiative/decision THIS claim fulfills; `completed_by` is the later
+  // claim that fulfills THIS one. A claim can have at most one of each.
+  completes: LinkedClaim | null;
+  completed_by: LinkedClaim | null;
 }
 
 export async function getClaimById(id: string): Promise<ClaimDetail | null> {
   const { rows } = await pool.query<
-    Omit<ClaimDetail, 'source_url' | 'proof_documents' | 'closest_record' | 'source_count'> & {
+    Omit<ClaimDetail, 'source_url' | 'proof_documents' | 'closest_record' | 'source_count' | 'completes' | 'completed_by'> & {
       origin_url: string;
       source_start_seconds: number | null;
       source_count: string;
+      completes_claim_id: string | null;
     }
   >(
     `SELECT
-       c.id, c.stance, c.title, c.summary, c.category, c.citizen_impact,
+       c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
+       c.completes_claim_id,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date, c.review_status,
        s.source_type, s.title AS source_title, s.speaker_org, s.speaker_name,
        s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
@@ -199,11 +225,29 @@ export async function getClaimById(id: string): Promise<ClaimDetail | null> {
   const closest_record =
     row.stance === 'opposition_statement' ? await findClosestRecord(row.category, `${row.title} ${row.summary}`) : null;
 
+  let completes: LinkedClaim | null = null;
+  if (row.completes_claim_id) {
+    const { rows: completesRows } = await pool.query<LinkedClaim>(
+      `SELECT id, title, to_char(event_date, 'YYYY-MM-DD') AS event_date FROM claims WHERE id = $1`,
+      [row.completes_claim_id]
+    );
+    completes = completesRows[0] ?? null;
+  }
+
+  const { rows: completedByRows } = await pool.query<LinkedClaim>(
+    `SELECT id, title, to_char(event_date, 'YYYY-MM-DD') AS event_date
+     FROM claims WHERE completes_claim_id = $1 AND review_status = 'approved'
+     LIMIT 1`,
+    [id]
+  );
+
   return {
     ...row,
     source_url: withTimestamp(row.origin_url, row.source_start_seconds),
     source_count: Number(row.source_count),
     proof_documents: proofRows,
-    closest_record
+    closest_record,
+    completes,
+    completed_by: completedByRows[0] ?? null
   };
 }

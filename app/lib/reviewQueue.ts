@@ -1,6 +1,7 @@
 import { pool } from './db';
 import { withTimestamp } from './youtube';
 import { ValidationError } from './sourceManager';
+import { ACCOMPLISHMENT_TYPES } from './accomplishmentType';
 
 export interface ReviewQueueClaim {
   id: string;
@@ -8,6 +9,9 @@ export interface ReviewQueueClaim {
   title: string;
   summary: string;
   category: string | null;
+  accomplishment_type: string | null;
+  completes_claim_id: string | null;
+  completes_claim_title: string | null;
   sentiment: string | null;
   extraction_confidence: string | null;
   extracted_by: string;
@@ -42,7 +46,9 @@ export async function getReviewQueueClaims(): Promise<ReviewQueueClaim[]> {
   const { rows } = await pool.query<ReviewQueueClaim & { source_start_seconds: number | null }>(
     `SELECT * FROM (
        SELECT DISTINCT ON (c.id)
-         c.id, c.stance, c.title, c.summary, c.category, c.sentiment,
+         c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type,
+         c.completes_claim_id, (SELECT title FROM claims WHERE id = c.completes_claim_id) AS completes_claim_title,
+         c.sentiment,
          c.extraction_confidence, c.extracted_by, c.review_status,
          c.citizen_impact,
          c.citizen_impact_suggested,
@@ -169,4 +175,74 @@ export async function updateSourceUrl(
     [sourceId]
   );
   return { source_id: row.id, origin_url: row.origin_url, claims_updated: Number(countRows[0].count) };
+}
+
+// Lets an admin correct the extraction agent's accomplishment_type call
+// when it doesn't quite land — the taxonomy is a judgment call (see
+// schema.sql's comment), so getting it wrong sometimes is expected, and
+// there's no reason to require unapprove-and-re-review just to fix a
+// label. Works on a claim in any review_status (pending or already
+// approved/live) since a mislabeled claim can be spotted either before or
+// after it's published.
+export async function updateAccomplishmentType(
+  claimId: string,
+  accomplishmentType: string | null
+): Promise<{ id: string; accomplishment_type: string | null } | null> {
+  if (accomplishmentType !== null && !(ACCOMPLISHMENT_TYPES as readonly string[]).includes(accomplishmentType)) {
+    throw new ValidationError(`accomplishment_type must be one of: ${ACCOMPLISHMENT_TYPES.join(', ')}`);
+  }
+  const { rows } = await pool.query<{ id: string; accomplishment_type: string | null }>(
+    `UPDATE claims SET accomplishment_type = $2 WHERE id = $1
+     RETURNING id, accomplishment_type`,
+    [claimId, accomplishmentType]
+  );
+  return rows[0] ?? null;
+}
+
+// Links a later claim to the earlier initiative/decision it completes
+// (see schema.sql's completes_claim_id comment) -- pass null to unlink.
+// Manual only: an admin searches for and picks the earlier claim (see
+// searchAccomplishmentClaims below), never auto-matched.
+export async function updateCompletesClaim(
+  claimId: string,
+  completesClaimId: string | null
+): Promise<{ id: string; completes_claim_id: string | null } | null> {
+  if (completesClaimId === claimId) {
+    throw new ValidationError('A claim cannot complete itself');
+  }
+  const { rows } = await pool.query<{ id: string; completes_claim_id: string | null }>(
+    `UPDATE claims SET completes_claim_id = $2 WHERE id = $1
+     RETURNING id, completes_claim_id`,
+    [claimId, completesClaimId]
+  );
+  return rows[0] ?? null;
+}
+
+export interface ClaimSearchResult {
+  id: string;
+  title: string;
+  accomplishment_type: string | null;
+  event_date: string | null;
+}
+
+// Backing the review queue's "this completes an earlier claim" picker --
+// searches approved accomplishment claims (the only kind a later claim
+// can meaningfully "complete") by title, excluding the claim being edited
+// itself. Plain ILIKE, not full-text: this is a small, admin-facing
+// autocomplete, not the public retrieval path (see lib/retrieve.ts for
+// that), so a simpler match is fine.
+export async function searchAccomplishmentClaims(query: string, excludeId?: string): Promise<ClaimSearchResult[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const { rows } = await pool.query<ClaimSearchResult>(
+    `SELECT id, title, accomplishment_type, to_char(event_date, 'YYYY-MM-DD') AS event_date
+     FROM claims
+     WHERE stance = 'accomplishment' AND review_status = 'approved'
+       AND title ILIKE $1
+       AND ($2::uuid IS NULL OR id != $2)
+     ORDER BY event_date DESC NULLS LAST
+     LIMIT 10`,
+    [`%${trimmed}%`, excludeId ?? null]
+  );
+  return rows;
 }

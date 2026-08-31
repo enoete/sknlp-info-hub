@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import styles from './dashboard.module.css';
 import type { DashboardClaim } from './lib/claims';
 import { getCategoryColor } from './lib/categoryColors';
+import { accomplishmentTypeLabel } from './lib/accomplishmentType';
 
 const ALL = 'all';
 
@@ -83,10 +84,21 @@ export default function DashboardClient({ claims }: { claims: DashboardClaim[] }
                 <path d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <span className={styles.cat} style={{ background: color.tint, color: color.ink }}>
-              {c.category ?? 'Uncategorized'}
-            </span>
+            <div className={styles.tagRow}>
+              <span className={styles.cat} style={{ background: color.tint, color: color.ink }}>
+                {c.category ?? 'Uncategorized'}
+              </span>
+              <span className={styles.typeTag}>{accomplishmentTypeLabel(c.accomplishment_type)}</span>
+            </div>
             <h3>{c.title}</h3>
+            {c.completed_by_claim_id && (
+              <a href={`/claim/${c.completed_by_claim_id}`} className={styles.completedBanner}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+                Since completed{c.completed_by_date ? ` — ${c.completed_by_date}` : ''}: {c.completed_by_title}
+              </a>
+            )}
             <div className={styles.summary}>{c.summary}</div>
             {c.citizen_impact && (
               <div className={styles.impactBlock}>

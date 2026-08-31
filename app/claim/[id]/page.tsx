@@ -4,6 +4,7 @@ import styles from './claim-detail.module.css';
 import { getClaimById } from '@/app/lib/claims';
 import { sourceLinkLabel } from '@/app/lib/youtube';
 import { getCategoryColor } from '@/app/lib/categoryColors';
+import { accomplishmentTypeLabel } from '@/app/lib/accomplishmentType';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ export default async function ClaimDetailPage({ params }: { params: { id: string
         <div>
           <div className={styles.headMeta}>
             <span className={`${styles.tag} ${isOpposition ? styles.tagOpposition : styles.tagAccomplishment}`}>
-              {isOpposition ? 'Opposition statement' : 'Accomplishment'}
+              {isOpposition ? 'Opposition statement' : accomplishmentTypeLabel(claim.accomplishment_type)}
             </span>
             <span className={styles.tag} style={{ background: color.tint, color: color.ink }}>
               {claim.category ?? 'Uncategorized'}
@@ -149,6 +150,24 @@ export default async function ClaimDetailPage({ params }: { params: { id: string
               <div className={styles.emptyNote}>No supporting documents uploaded yet.</div>
             )}
           </div>
+
+          {(claim.completed_by || claim.completes) && (
+            <div className={styles.block}>
+              <h4>Progress</h4>
+              {claim.completed_by && (
+                <div className={styles.statusLine}>
+                  ✓ Since completed{claim.completed_by.event_date ? ` — ${claim.completed_by.event_date}` : ''}:{' '}
+                  <Link href={`/claim/${claim.completed_by.id}`}>{claim.completed_by.title}</Link>
+                </div>
+              )}
+              {claim.completes && (
+                <div className={styles.statusLine}>
+                  Completes: <Link href={`/claim/${claim.completes.id}`}>{claim.completes.title}</Link>
+                  {claim.completes.event_date ? ` (${claim.completes.event_date})` : ''}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className={styles.block}>
             <h4>Record status</h4>

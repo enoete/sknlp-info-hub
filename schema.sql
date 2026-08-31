@@ -212,6 +212,38 @@ CREATE TABLE claims (
     summary         TEXT NOT NULL,
     category        TEXT,
     sentiment       TEXT CHECK (sentiment IN ('positive','neutral','negative','critical')),
+    -- Sub-classification within stance='accomplishment' only (NULL for
+    -- opposition_statement claims) -- 'accomplishment' the stance value
+    -- had been doing double duty as both "whose side is this claim on"
+    -- and "what kind of win is this," which flattened a completed
+    -- project, a policy decision, a strategic commitment, and an
+    -- in-progress initiative into one identical badge. This is the
+    -- honest subtype; stance keeps meaning only "government/party side
+    -- vs opposition side" so existing stance-based filtering logic
+    -- (Dashboard, Timeline, etc.) is untouched. Written directly by the
+    -- ingestion agent (extract_from_video.py's RESPONSE_SCHEMA) same as
+    -- category/sentiment -- a bounded classification call, not a
+    -- freeform narrative judgment like citizen_impact, so it doesn't need
+    -- the *_suggested human-confirmation gate those use.
+    accomplishment_type TEXT CHECK (
+        accomplishment_type IS NULL OR
+        accomplishment_type IN ('Accomplishment','Policy Decision','Strategic Decision','Ongoing Initiative')
+    ),
+    -- Self-reference on the NEWER claim, pointing back to the earlier
+    -- 'Ongoing Initiative' / 'Strategic Decision' / 'Policy Decision' it
+    -- fulfills -- e.g. a later "desalination plant completed" claim's
+    -- completes_claim_id points at the earlier "groundbreaking held"
+    -- claim. Lets the Dashboard/Claim Detail/Ask the Record show the
+    -- up-to-date status of an initiative instead of leaving the original
+    -- claim looking perpetually unfinished. Manual, admin-linked only via
+    -- the review queue (see app/lib/reviewQueue.ts) -- no automatic
+    -- similarity matching, same "flag for a human, never auto-resolve"
+    -- posture used elsewhere in this schema (see the speaker-identity
+    -- disagreement rule in CLAUDE.md). ON DELETE SET NULL rather than
+    -- CASCADE: deleting the completing claim should un-link, never take
+    -- the earlier claim down with it.
+    completes_claim_id UUID REFERENCES claims(id) ON DELETE SET NULL,
+    CONSTRAINT claims_completes_not_self CHECK (completes_claim_id IS NULL OR completes_claim_id != id),
     -- Only ever set via explicit human confirmation/edit — including
     -- confirming event_date_suggested below via the review queue's planned
     -- "confirm suggested date" card (see CLAUDE.md). Never written directly

@@ -47,6 +47,7 @@ EXCLUDED_COLUMNS = {
     "embedding": "reserved for future embedding-based retrieval (no Voyage AI key yet) — nothing populates this today",
     "created_at": "DB-managed timestamp default",
     "updated_at": "DB-managed timestamp default",
+    "completes_claim_id": "admin-linked only, after the fact, via the review queue's 'this completes an earlier claim' picker (app/lib/reviewQueue.ts's updateCompletesClaim) — a single video extraction has no visibility into other claims already in the DB to link against, so this can never be a per-video extraction field",
 }
 
 # RESPONSE_SCHEMA fields that describe something other than a claims column

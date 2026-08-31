@@ -115,6 +115,22 @@
   color: var(--muted);
   cursor: pointer;
 }
+/* Reuses .tag's pill look but as a real <select> so reclassifying is a
+   single click+choose, not a separate edit/save/cancel flow. */
+.typeSelect {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  appearance: none;
+}
+.linkResults {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .editLink:hover {
   color: var(--red);
 }

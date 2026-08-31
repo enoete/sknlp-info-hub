@@ -126,6 +126,57 @@
   font-weight: 700;
 }
 
+/* Shown on an older Ongoing Initiative/Strategic Decision/Policy Decision
+   card once a later approved claim links to it as completing it (see
+   claims.completes_claim_id) -- the update the user asked for: an
+   initiative's card should reflect that it's since been finished, not sit
+   there looking perpetually unfinished. */
+.completedBanner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--green-ink);
+  background: var(--green-tint);
+  border-radius: 6px;
+  padding: 6px 9px;
+  margin: 2px 0 10px;
+  text-decoration: none;
+}
+.completedBanner:hover {
+  text-decoration: underline;
+}
+.completedBanner svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.tagRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Sub-classification within accomplishment stance (see
+   app/lib/accomplishmentType.ts) -- deliberately neutral/outlined rather
+   than category-colored, so it reads as a secondary qualifier and never
+   competes visually with the category pill it sits beside. */
+.typeTag {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
 .impactBlock {
   border: 1px dashed var(--line);
   border-radius: 8px;
