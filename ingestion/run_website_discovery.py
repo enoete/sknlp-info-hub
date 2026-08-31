@@ -116,15 +116,44 @@ def already_seen_urls(conn, registry_id: str) -> set[str]:
         return {row[0] for row in cur.fetchall()}
 
 
-def run_website_discovery(registry_id: str, max_new: int = 5, dry_run: bool = False) -> dict:
+def run_website_discovery(registry_id: str, max_new: int = 5, dry_run: bool = False, historical: bool = False) -> dict:
     conn = get_db_connection()
     try:
         registry = fetch_registry_row(conn, registry_id)
+        seen = already_seen_urls(conn, registry_id)
+
+        if historical:
+            # Sitemap-based backfill -- reaches back to the scope cutoff,
+            # unlike the RSS feed below (only ever the ~10 most recent
+            # items, no pagination). Candidates here only have url +
+            # published_at (from the sitemap), no title/body -- the
+            # per-article fetch happens inside ingest_one_article via
+            # extract_from_article.fetch_article() when article_data
+            # isn't passed.
+            from discover_website_historical import find_historical_candidates
+            historical_candidates = find_historical_candidates(registry["handle_or_url"], seen, max_new)
+            print(f"Found {len(historical_candidates)} new in-scope, non-noise historical article(s) (of up to {max_new} requested).", file=sys.stderr)
+
+            results = []
+            for hc in historical_candidates:
+                print(f"--- {hc.url} ({hc.published_at}) ---", file=sys.stderr)
+                try:
+                    result = ingest_one_article(conn, registry, hc.url, dry_run=dry_run, known_published_at=hc.published_at)
+                    results.append(result)
+                except Exception as e:
+                    print(f"Error ingesting {hc.url}: {e}", file=sys.stderr)
+                    results.append({"url": hc.url, "error": str(e)})
+
+            if not dry_run:
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute("UPDATE sources_registry SET last_checked_at = %s WHERE id = %s", (datetime.now(timezone.utc), registry_id))
+            return {"registry_id": registry_id, "mode": "historical", "candidates_found": len(historical_candidates), "results": results}
+
         feed_url = registry["handle_or_url"].rstrip("/") + "/feed/"
 
         print(f"Fetching feed {feed_url}...", file=sys.stderr)
         all_articles = fetch_feed_articles(feed_url)
-        seen = already_seen_urls(conn, registry_id)
 
         candidates = []
         for a in all_articles:
@@ -174,11 +203,12 @@ if __name__ == "__main__":
     parser.add_argument("--registry-id", required=True)
     parser.add_argument("--max-new", type=int, default=5)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--historical", action="store_true", help="Sitemap-based backfill to the scope cutoff, instead of the RSS feed's ~10 most recent items")
     args = parser.parse_args()
 
     if not os.environ.get("GEMINI_API_KEY"):
         print("Set GEMINI_API_KEY before running.", file=sys.stderr)
         sys.exit(1)
 
-    result = run_website_discovery(args.registry_id, max_new=args.max_new, dry_run=args.dry_run)
+    result = run_website_discovery(args.registry_id, max_new=args.max_new, dry_run=args.dry_run, historical=args.historical)
     print(json.dumps(result, indent=2, default=str))
