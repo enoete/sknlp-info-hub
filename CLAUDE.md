@@ -589,6 +589,84 @@ accomplishment list rather than building the ingestion agent — that's a
 phase-2 concern. Manual seed data closely matching real SKNLP announcements
 is fine and expected for a proof of concept.
 
+## Stance misattribution bug — found and fixed (2026-08-31)
+
+Caught by the person who commissioned this project spot-checking live
+data against a real current Cabinet list, not by any automated check —
+worth remembering as a gap in the review process, not just a code bug.
+Two distinct, confirmed errors, both from the same root cause
+(`extract_from_video.py`'s `stance` field judged tone/criticism alone,
+never checked WHO was speaking or WHICH administration a claim was
+actually about):
+
+1. **Sitting SKNLP ministers mislabeled `opposition_statement`.**
+   `KNOWN_FIGURES` only listed Dr. Terrance Drew by name — the other 8
+   current Cabinet ministers (Hanley, Douglas, Maynard, Henderson,
+   Duggins, Clarke, Wilkin, Phillip) weren't on it. On ZIZ's mixed-speaker
+   National Assembly sitting footage, when one of these ministers
+   criticized the PREVIOUS (Team Unity) administration on the floor —
+   completely normal government messaging — the model saw "criticism"
+   and tagged it opposition_statement. 8 real claims hit this, 6 already
+   `approved` and publicly live (e.g. "Alleged Mismanagement of $14.4M on
+   Basseterre High School" — Prime Minister Drew's own claim, shown as an
+   opposition statement). Corrected: reclassified to
+   `stance='accomplishment'` and pulled back to `pending_review` for a
+   human sanity check before re-publishing (not silently re-approved).
+2. **A previous administration's own record mislabeled as an SKNLP
+   `accomplishment`.** When Timothy Harris (PLP leader, former PM) or
+   Mark Brantley described something the 2015-2022 Team Unity
+   administration did (e.g. "Zero COVID-19 Deaths Through December
+   2020", "Passage of Freedom of Information Act in 2018") — their own
+   record, praised by them, nothing to do with SKNLP or the current
+   government at all — it got extracted and tagged `accomplishment`,
+   crediting SKNLP with a different party's history. 19 claims hit this,
+   most already `approved` and live. This is worse than case 1: not a
+   stance-side flip, the content doesn't belong on this archive under
+   *either* stance value (wrong administration, and several also predate
+   the Aug 5 2022 scope cutoff outright — see "Scope window" above).
+   Corrected: `review_status='rejected'` — removed from public view
+   entirely, not just relabeled.
+
+Root-cause fix in `extract_from_video.py` (not just a data patch):
+- `KNOWN_FIGURES` now lists the full current Cabinet with explicit
+  `SKNLP` affiliation tags, plus opposition figures with their own
+  affiliation — so the model has an explicit current-affiliation lookup
+  instead of inferring side from tone.
+- `candidate_claims`' schema description adds an explicit scope rule:
+  a claim solely about a PREVIOUS/different administration's own record
+  — regardless of who states it or whether favorably or critically — is
+  excluded from extraction entirely, not assigned either stance value.
+- The `stance` field's description now explicitly separates "who is
+  speaking" from "which administration the content is about," and
+  states directly that a CURRENT minister criticizing the PREVIOUS
+  administration is still `accomplishment` (the current government's own
+  narrative), never `opposition_statement`, just because the tone is
+  critical.
+- Both the government-side (`run_batch.py`, ZIZ) and opposition-side
+  (`run_channel_discovery.py`, Talk SKN/Straight Talk/PLP) detached
+  processes that were running when this was found were killed and
+  restarted from the fixed code — anything they'd already written before
+  the kill was left untouched (already verified correct in the audit
+  above); anything not yet extracted gets the fixed prompt.
+- Not yet done: a matching audit of the opposition-side sources (Talk
+  SKN, Straight Talk, PLP) ingested before this fix — the audit above
+  only covered ZIZ (where the bug was actually found, since ZIZ is the
+  only source with mixed government+opposition speakers in one video).
+  Straight Talk/Talk SKN are pure opposition commentary so case 1 is
+  unlikely there, but case 2 (crediting a previous administration) is
+  plausible on any channel discussing Team Unity-era history and hasn't
+  been specifically checked yet.
+- Separately noticed, not yet fixed: two of the corrected claims had a
+  wrong `transcript_segments.speaker_title_at_time` (PM Drew's segment
+  showing "Attorney General" / "Speaker of the National Assembly")  —
+  likely Gemini merging adjacent procedural speaker turns into one
+  broad raw segment during a very long multi-hour chunk, not a bug in
+  `compute_segment_window()`'s matching logic itself (spot-checked). The
+  claim's own `summary` text correctly named the real speaker in both
+  cases, so this is a display-only nit on the timestamp citation, not a
+  factual/stance error — lower priority than the two bugs above but
+  worth a closer look if it recurs.
+
 ## Accomplishment sub-typing (`claims.accomplishment_type`)
 
 Decision (2026-08-31): `stance = 'accomplishment'` had been doing double

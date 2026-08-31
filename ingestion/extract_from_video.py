@@ -42,18 +42,41 @@ from segment_utils import mmss_to_seconds, seconds_to_mmss
 from video_chunking import DEFAULT_CHUNK_SECONDS, compute_chunk_windows, get_video_duration_seconds
 
 # Known figures to help Gemini attempt named identification instead of
-# generic "Speaker 1" / "Speaker 2" labels. Keep this list current —
-# political roles here change (see CLAUDE.md: PAM leadership, elections).
-# Titles are intentionally omitted here; the model is asked to describe
-# the role AS STATED IN THE VIDEO, not from this list, to avoid baking in
-# a stale title.
+# generic "Speaker 1" / "Speaker 2" labels, AND -- just as important --
+# to establish which side of the aisle each one actually sits on. Keep
+# this list current -- political roles here change (see CLAUDE.md: PAM
+# leadership, elections), and a stale/incomplete list is exactly what
+# caused a real bug (2026-08-31): several sitting SKNLP ministers not on
+# this list (Maynard, Clarke, Wilkin, Phillip, Hanley, Douglas, Duggins,
+# Henderson) had their own National Assembly floor statements mislabeled
+# stance='opposition_statement' simply because the content sounded
+# critical (they were criticizing the PREVIOUS administration) and the
+# model had no explicit signal that the speaker was a CURRENT government
+# minister. Titles are intentionally omitted here beyond a short party/
+# side tag -- the model is asked to describe the role AS STATED IN THE
+# VIDEO, not from this list, to avoid baking in a stale specific title.
 KNOWN_FIGURES = [
-    "Dr. Terrance Drew (Prime Minister, SKNLP)",
-    "Timothy Harris",
-    "Shawn Richards",
-    "Mark Brantley (Premier of Nevis)",
-    "Natasha Grey-Brookes",
-    "Janice Daniel-Hodge (NRP)",
+    # Current SKNLP government (accomplishment side) -- full Cabinet as of
+    # 2026-08-31, confirmed by the person who commissioned this project:
+    "Dr. Terrance Drew — SKNLP, Prime Minister",
+    "Dr. Geoffrey Ian Hanley — SKNLP, Deputy Prime Minister",
+    "Dr. Denzil Douglas — SKNLP, Minister of Foreign Affairs",
+    "Konris Maynard — SKNLP, Minister of Public Infrastructure",
+    "Marsha Henderson — SKNLP, Minister of Tourism",
+    "Samal Duggins — SKNLP, Minister of Agriculture",
+    "Dr. Joyelle Clarke — SKNLP, Minister of Sustainable Development",
+    "Garth Wilkin — SKNLP, Attorney-General",
+    "Isalean Phillip — SKNLP, Minister of State",
+    # Opposition figures (opposition_statement side when criticizing the
+    # CURRENT SKNLP government -- see the stance field's own description
+    # for the critical distinction: praising/defending THEIR OWN prior
+    # administration's record is neither accomplishment nor
+    # opposition_statement, it's out of this archive's scope entirely):
+    "Timothy Harris — PLP leader, former Prime Minister (Team Unity, 2015-2022)",
+    "Shawn Richards — PAM",
+    "Mark Brantley — Premier of Nevis, opposition-aligned nationally",
+    "Natasha Grey-Brookes — PAM (former leader)",
+    "Janice Daniel-Hodge — NRP",
 ]
 
 CATEGORIES = [
@@ -124,14 +147,50 @@ RESPONSE_SCHEMA = {
         },
         "candidate_claims": {
             "type": "array",
-            "description": "Only include segments that state something concrete and specific enough to be a factual claim (a policy, a number, a completed or in-progress project, an accusation about government performance). Do NOT include generic rhetoric, greetings, or vague statements with nothing checkable in them.",
+            "description": (
+                "Only include segments that state something concrete and specific enough to be a "
+                "factual claim (a policy, a number, a completed or in-progress project, an accusation "
+                "about government performance). Do NOT include generic rhetoric, greetings, or vague "
+                "statements with nothing checkable in them. CRITICAL SCOPE RULE, checked before stance: "
+                "this archive covers ONLY the current St. Kitts and Nevis Labour Party (SKNLP) "
+                "administration's term, which began August 5, 2022 (Dr. Terrance Drew, Prime Minister). "
+                "If a claim is solely about what a PREVIOUS/DIFFERENT administration (e.g. the "
+                "2015-2022 Team Unity/PLP-led government) did, achieved, or is proud of -- even when a "
+                "current opposition figure who served in that prior administration is describing their "
+                "own past record, favorably or not -- DO NOT extract it as a candidate_claim at all. It "
+                "is out of scope regardless of stance; it is not an SKNLP accomplishment (wrong party) "
+                "and not a valid opposition_statement either (not criticism of the CURRENT government). "
+                "Only extract it if it is being used as direct, explicit context for a claim ABOUT the "
+                "current SKNLP administration (e.g. an opposition figure contrasting past performance "
+                "against a specific current-government failure) -- and even then, stance describes the "
+                "part of the statement that is actually about the current administration."
+            ),
             "items": {
                 "type": "object",
                 "properties": {
                     "stance": {
                         "type": "string",
                         "enum": ["accomplishment", "opposition_statement"],
-                        "description": "accomplishment = government/party describing something it did. opposition_statement = criticism or a claim made against the government/party."
+                        "description": (
+                            "Classify by WHO the claim's content is actually about (the current SKNLP "
+                            "administration, in office since Aug 5 2022) and, separately, WHO is "
+                            "speaking -- these are not the same question, and conflating them is a "
+                            "confirmed real bug (see KNOWN_FIGURES comment above). "
+                            "'accomplishment' = describes something the CURRENT SKNLP government did, "
+                            "decided, or is doing -- this includes a CURRENT government minister "
+                            "criticizing or exposing something about a PREVIOUS administration (e.g. "
+                            "the PM alleging the prior government mismanaged a project) -- that is the "
+                            "current government's own narrative/positioning, still accomplishment-side, "
+                            "even though the tone is critical and the subject is historical. "
+                            "'opposition_statement' = criticism made by an opposition-aligned speaker "
+                            "AGAINST the CURRENT SKNLP government specifically -- not against a prior "
+                            "administration, and not a prior administration's own achievements being "
+                            "recounted by an opposition figure (see the CRITICAL SCOPE RULE above -- "
+                            "that case should not be extracted as a claim at all). "
+                            "When in doubt about which administration a claim is really about, check "
+                            "the speaker against the KNOWN_FIGURES list above for their actual current "
+                            "affiliation rather than inferring it from tone alone."
+                        )
                     },
                     "title": {"type": "string", "description": "Short, neutral label for the claim, under 12 words."},
                     "summary": {"type": "string", "description": "1-2 sentence paraphrase in plain language. Do not quote more than a short phrase verbatim."},
