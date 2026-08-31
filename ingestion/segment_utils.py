@@ -51,12 +51,37 @@ def find_enclosing_segment(claim_seconds: int, raw_segments: list):
     return None
 
 
+# Generic placeholders Gemini uses when a speaker isn't actually
+# identifiable ("Speaker 1", "Speaker 2", ...) — never store one of these
+# as speaker_name_at_time, that would make "who said this" filtering
+# actively misleading (grouping unrelated unidentified speakers under a
+# fake shared identity) rather than just incomplete. "Caller" is handled
+# the same way for a different reason: deliberately never named at all
+# (see CLAUDE.md's "Call-in callers" decision) — it's a real, meaningful
+# label but not a name.
+_NON_NAME_LABELS = {"caller"}
+
+
+def _is_real_name(label) -> bool:
+    if not label:
+        return False
+    normalized = label.strip().lower()
+    if normalized in _NON_NAME_LABELS:
+        return False
+    if normalized.startswith("speaker ") and normalized[8:].strip().isdigit():
+        return False
+    return True
+
+
 def compute_segment_window(claim_seconds: int, raw_segments: list, all_claim_seconds_sorted: list):
-    """Returns (end_seconds, speaker_title_at_time) for a claim's deep-link
-    segment: end_seconds is capped at whichever of (next claim's start,
-    enclosing raw segment's end, +20s flat fallback) is smallest and still
-    after claim_seconds; speaker_title_at_time is borrowed from the
-    enclosing raw segment's role_as_stated when one contains this claim."""
+    """Returns (end_seconds, speaker_title_at_time, speaker_name_at_time)
+    for a claim's deep-link segment: end_seconds is capped at whichever of
+    (next claim's start, enclosing raw segment's end, +20s flat fallback)
+    is smallest and still after claim_seconds; speaker_title_at_time is
+    borrowed from the enclosing raw segment's role_as_stated, and
+    speaker_name_at_time from its speaker_label, when one contains this
+    claim — speaker_name_at_time stays None for a generic "Speaker N"
+    placeholder or a caller, never guessed."""
     enclosing = find_enclosing_segment(claim_seconds, raw_segments)
     enclosing_end = mmss_to_seconds(enclosing.get("end_timestamp", "")) if enclosing else None
     later = [x for x in all_claim_seconds_sorted if x > claim_seconds]
@@ -64,4 +89,6 @@ def compute_segment_window(claim_seconds: int, raw_segments: list, all_claim_sec
     candidates = [x for x in (next_claim_seconds, enclosing_end, claim_seconds + 20) if x is not None and x > claim_seconds]
     end_seconds = min(candidates) if candidates else claim_seconds + 20
     speaker_title_at_time = (enclosing.get("role_as_stated") or None) if enclosing else None
-    return end_seconds, speaker_title_at_time
+    raw_label = enclosing.get("speaker_label") if enclosing else None
+    speaker_name_at_time = raw_label.strip() if _is_real_name(raw_label) else None
+    return end_seconds, speaker_title_at_time, speaker_name_at_time

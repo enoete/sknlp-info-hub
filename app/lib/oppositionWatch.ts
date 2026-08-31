@@ -21,6 +21,18 @@ export interface OppositionPair {
   source_title: string;
   speaker_name: string | null;
   speaker_org: string;
+  // The actual named individual (Timothy Harris, Mark Brantley, Kyle
+  // Flanders, Ian "Patches" Liburd, ...) — distinct from speaker_name
+  // above, which lives on `sources` at one-per-video granularity and is
+  // null for every opposition source today (see CLAUDE.md's "Named
+  // opposition speaker filtering" decision). This instead comes from
+  // transcript_segments.speaker_name_at_time, captured per claim, so a
+  // multi-speaker video (a Straight Talk episode playing a government
+  // clip, a PLP convention with several speakers) resolves correctly
+  // per statement rather than one name for the whole video. Null when
+  // genuinely not identified — never guessed, never backfilled from a
+  // channel default beyond the one verified "Host" mapping.
+  named_speaker: string | null;
   origin_url: string;
   published_at: string | null;
   // Derived from COALESCE(event_date, published_at), same fallback the
@@ -32,6 +44,20 @@ export interface OppositionPair {
   year: number | null;
   record: OppositionRecord | null;
 }
+
+// Below this, "closest" is really "least-unrelated" — noise, not a real
+// pairing. Confirmed with a live example (2026-08-31): "Termination of
+// National Bank Managing Director Terrence Crossman" (Governance) paired
+// with "Unaccounted Cash at Development Bank" at rank 0.103 — a
+// different bank, a different story, connected only by generic shared
+// words ("bank", "national"). A real match in a coherent category (the
+// "2,400 NHC housing units" pairing) scored 0.13-0.16. This is a coarse
+// empirical floor, not a principled one — ts_rank isn't comparable
+// across queries/categories in any absolute sense — but the client's own
+// instruction was explicit: prefer showing nothing over a pairing that
+// doesn't actually make sense, so erring conservative here is correct,
+// not just convenient.
+export const MIN_RELEVANT_RANK = 0.12;
 
 // Same category-matching approach as getFollowUpQuestions in suggestions.ts
 // (same category, approved, excludes nothing else) — but "closest" here
@@ -72,7 +98,7 @@ export async function findClosestRecord(
     [oppositionText, category]
   );
   const row = rows[0];
-  if (!row) return null;
+  if (!row || row.rank < MIN_RELEVANT_RANK) return null;
   return { ...row, origin_url: withTimestamp(row.origin_url, row.source_start_seconds) };
 }
 
@@ -95,6 +121,7 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
     origin_url: string;
     published_at: string | null;
     year: number | null;
+    named_speaker: string | null;
     source_start_seconds: number | null;
   }>(
     `SELECT
@@ -103,6 +130,11 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
        s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org,
        s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
        EXTRACT(YEAR FROM coalesce(c.event_date, s.published_at))::INT AS year,
+       (SELECT ts.speaker_name_at_time
+        FROM claim_transcript_segments cts
+        JOIN transcript_segments ts ON ts.id = cts.segment_id
+        WHERE cts.claim_id = c.id
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS named_speaker,
        (SELECT ts.start_seconds
         FROM claim_transcript_segments cts
         JOIN transcript_segments ts ON ts.id = cts.segment_id

@@ -204,14 +204,16 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
                 # fallback) is smallest and still after start_seconds.
                 claim_seconds = mmss_to_seconds(c.get("start_timestamp", ""))
                 if claim_seconds is not None:
-                    end_seconds, speaker_title_at_time = compute_segment_window(claim_seconds, raw_segments, claim_seconds_list)
+                    end_seconds, speaker_title_at_time, speaker_name_at_time = compute_segment_window(
+                        claim_seconds, raw_segments, claim_seconds_list
+                    )
 
                     cur.execute(
                         """INSERT INTO transcript_segments
-                               (source_id, start_seconds, end_seconds, text, speaker_title_at_time)
-                           VALUES (%s, %s, %s, %s, %s)
+                               (source_id, start_seconds, end_seconds, text, speaker_title_at_time, speaker_name_at_time)
+                           VALUES (%s, %s, %s, %s, %s, %s)
                            RETURNING id""",
-                        (source_id, claim_seconds, end_seconds, c["summary"], speaker_title_at_time),
+                        (source_id, claim_seconds, end_seconds, c["summary"], speaker_title_at_time, speaker_name_at_time),
                     )
                     segment_id = cur.fetchone()["id"]
                     cur.execute(

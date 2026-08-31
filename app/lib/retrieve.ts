@@ -1,5 +1,6 @@
 import { pool } from './db';
 import { withTimestamp } from './youtube';
+import { MIN_RELEVANT_RANK } from './oppositionWatch';
 
 export interface RetrievedRow {
   id: string;
@@ -114,7 +115,7 @@ async function findRelatedRecordsForOpposition(direct: RetrievedRow[]): Promise<
     const hasCounterpart = direct.some((r) => r.stance === 'accomplishment' && r.category === claim.category);
     if (hasCounterpart) continue;
 
-    const { rows } = await pool.query<RetrievedRow & { source_start_seconds: number | null }>(
+    const { rows } = await pool.query<RetrievedRow & { source_start_seconds: number | null; rank: number }>(
       `WITH q AS (
          SELECT to_tsquery('english', string_agg(lexeme, ' | ')) AS tsq
          FROM unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme
@@ -144,7 +145,7 @@ async function findRelatedRecordsForOpposition(direct: RetrievedRow[]): Promise<
       [`${claim.title} ${claim.summary}`, claim.category]
     );
     const row = rows[0];
-    if (row && !seenIds.has(row.id)) {
+    if (row && row.rank >= MIN_RELEVANT_RANK && !seenIds.has(row.id)) {
       seenIds.add(row.id);
       related.push({ ...row, origin_url: withTimestamp(row.origin_url, row.source_start_seconds), match_type: 'related' });
     }

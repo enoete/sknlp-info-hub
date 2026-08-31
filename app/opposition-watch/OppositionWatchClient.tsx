@@ -12,15 +12,17 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
     () => Array.from(new Set(pairs.map((p) => p.category).filter((c): c is string => !!c))).sort((a, b) => a.localeCompare(b)),
     [pairs]
   );
-  // "Who said it" — speaker_org is the reliably-populated field (a named
-  // individual speaker_name is almost always null for these sources, see
-  // CLAUDE.md); for a third-party channel like Straight Talk or Talk SKN
-  // this is effectively the commentator, for PLP it's the party's own
-  // channel, for ZIZ-sourced National Assembly footage it's the source
-  // rather than the individual MP speaking — a real gap, not pretending
-  // otherwise, but still meaningfully narrows "who" for a viewer today.
+  // "Who said it" — the actual named individual (Timothy Harris, Mark
+  // Brantley, Kyle Flanders, Ian "Patches" Liburd, ...) when it's been
+  // identified, per claim (transcript_segments.speaker_name_at_time —
+  // see oppositionWatch.ts). Falls back to the channel/source name only
+  // for the claims that genuinely have no resolved individual yet, so
+  // nothing silently disappears from the filter list while it's still
+  // being backfilled — those just show up bucketed by source instead of
+  // by name until a real speaker is identified.
+  const speakerOf = (p: OppositionPair) => p.named_speaker ?? p.speaker_org;
   const speakers = useMemo(
-    () => Array.from(new Set(pairs.map((p) => p.speaker_org).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    () => Array.from(new Set(pairs.map(speakerOf).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
     [pairs]
   );
   const years = useMemo(
@@ -38,7 +40,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
     return (
       (statusFilter === ALL || status === statusFilter) &&
       (categoryFilter === ALL || p.category === categoryFilter) &&
-      (speakerFilter === ALL || p.speaker_org === speakerFilter) &&
+      (speakerFilter === ALL || speakerOf(p) === speakerFilter) &&
       (yearFilter === ALL || String(p.year) === yearFilter)
     );
   });
@@ -90,7 +92,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
           className={`${styles.pill} ${speakerFilter === ALL ? styles.pillActive : ''}`}
           onClick={() => setSpeakerFilter(ALL)}
         >
-          All sources
+          All speakers
         </span>
         {speakers.map((sp) => (
           <span
@@ -142,7 +144,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
                 <div className={styles.oppoTag}>Opposition statement</div>
                 <p>&quot;{p.summary}&quot;</p>
                 <div className={styles.metaLine}>
-                  {p.speaker_name ? `${p.speaker_name} — ` : ''}
+                  {p.named_speaker ? `${p.named_speaker} — ` : ''}
                   {p.speaker_org} &middot; <span className={styles.mono}>{p.published_at ?? p.event_date ?? 'date unknown'}</span> &middot;{' '}
                   <a href={p.origin_url} target="_blank" rel="noreferrer">
                     view source

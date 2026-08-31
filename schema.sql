@@ -145,6 +145,14 @@ CREATE TABLE transcript_segments (
     speaker_confidence NUMERIC(4,3),                -- 0.000-1.000, voice match confidence
     speaker_title_at_time TEXT,                     -- e.g. "PAM Leader" — captured at ingestion time, never
                                                       -- overwritten as the person's role changes later
+    speaker_name_at_time TEXT,                      -- e.g. "Timothy Harris" — the actual named individual,
+                                                      -- distinct from the role/title above (a role can be
+                                                      -- shared/reused across administrations, e.g. "Prime
+                                                      -- Minister"; the name is what actually lets a viewer
+                                                      -- filter "show me everything Mark Brantley said").
+                                                      -- Null when the speaker is a caller (never named, see
+                                                      -- CLAUDE.md's "Call-in callers" decision) or genuinely
+                                                      -- unidentified — never guessed to fill this in.
     start_seconds   INT NOT NULL,
     end_seconds     INT NOT NULL,
     text            TEXT NOT NULL,
