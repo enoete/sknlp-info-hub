@@ -315,6 +315,47 @@ than being folded into "local news coverage."
   principle that keeps SKNIS from being tagged opposition just because a
   claim quotes criticism). `tier = 'third_party'`, `detection_method =
   'public_rss'` (RSS: `youtube.com/feeds/videos.xml?channel_id=UCCFwjEhC4u8gzeJAUOpZFSw`).
+- **Straight Talk — Ian "Patches" Liburd** (YouTube, `@straighttalk3364`,
+  channel ID `UCk9m4AfgR5NgC75a0FLhbSA`) — registered 2026-08-31
+  (`sources_registry` id `82dd605e-63d4-4355-96e8-dd9fdd74c0da`), same
+  posture as Talk SKN above: verified via a live fetch of the channel's
+  own "About" text — *"we promote and facilitate free expression on all
+  issues of National Interests. Be they Legal, Environmental,
+  Technological, Social, Economic or Political"* — independent
+  commentator, not party-affiliated, so `source_type = 'third_party'`
+  at the registry level even though individual extracted claims can
+  still carry `stance = 'opposition_statement'`. Confirmed active via
+  RSS (posting as recently as Aug 27 2026); titles run sharply
+  critical of government ("A People Stripped of Their Livelihood and
+  Dignity"), per the client's characterization a "hard hitter" with
+  documented specifics, not just commentary. `tier = 'third_party'`,
+  `detection_method = 'public_rss'` (RSS:
+  `youtube.com/feeds/videos.xml?channel_id=UCk9m4AfgR5NgC75a0FLhbSA`).
+  **Registered only — not yet ingested.** Per the sequencing decision
+  below ("Opposition side — sequencing"), no video from this channel
+  should be run through `run_ingestion.py`/`run_batch.py` until the
+  government-side historical backlog is substantially done.
+
+## Opposition side — sequencing (decided 2026-08-31)
+
+The opposition/"Opposition Watch" build-out (broader source coverage,
+UI, comparison logic) is real scope, not being dropped — but it comes
+**after** the government-side historical record is substantially
+complete, not in parallel with it. Rationale: the government-side ZIZ
+high-value backlog (`/tmp/ziz_high_value.json` — 51 National Assembly
+sittings, 8 PM/Minister statements, 53 press conferences) is largely
+unprocessed, chunking now makes all of it ingestable (see "Ingestion
+agent" video-chunking work), and it represents far more total
+documented volume than the opposition side ever will (PAM's own
+YouTube channel posts infrequently — see "Known sources for
+`sources_registry` seed data" above). Finishing one side deeply before
+opening a second front avoids a half-built government record sitting
+next to a half-built opposition record with neither demo-ready.
+`sources_registry` rows for opposition/third-party sources (Talk SKN,
+Straight Talk) can be registered ahead of time — registering costs
+nothing and just means the config is ready — but actually running
+ingestion against them should wait for an explicit go-ahead once the
+government backlog is in a good state.
 
 ## Copyright / display rule for news sources
 
