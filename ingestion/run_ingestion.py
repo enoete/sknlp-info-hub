@@ -61,7 +61,7 @@ from datetime import date, datetime, timezone
 import psycopg2
 import psycopg2.extras
 
-from extract_from_video import extract
+from extract_from_video import extract_with_chunking_fallback, normalize_accomplishment_type
 from segment_utils import mmss_to_seconds, compute_segment_window
 from scope_config import ADMINISTRATION_START, in_scope
 
@@ -127,7 +127,7 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
     source_type = registry["source_type"]
 
     print(f"Extracting from {youtube_url} (registry={registry['label']!r}, source_type={source_type})...", file=sys.stderr)
-    extraction = extract(youtube_url, source_type, category_hint="")
+    extraction = extract_with_chunking_fallback(youtube_url, source_type, category_hint="")
     metadata = extraction.get("_video_metadata", {}) or {}
     claims = extraction.get("candidate_claims", [])
     print(f"Extraction complete: video_summary={extraction.get('video_summary', '')[:80]!r}, {len(claims)} candidate claim(s).", file=sys.stderr)
@@ -161,16 +161,17 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
             for c in claims:
                 cur.execute(
                     """INSERT INTO claims
-                           (stance, title, summary, category, sentiment,
+                           (stance, title, summary, category, accomplishment_type, sentiment,
                             citizen_impact_suggested, event_date_suggested,
                             extracted_by, extraction_confidence, review_status)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, 'gemini_agent', %s, 'pending_review')
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'gemini_agent', %s, 'pending_review')
                        RETURNING id, review_status""",
                     (
                         c["stance"],
                         c["title"],
                         c["summary"],
                         c["category"],
+                        normalize_accomplishment_type(c.get("accomplishment_type")),
                         c["sentiment"],
                         (c.get("citizen_impact_suggested") or "").strip() or None,
                         parse_suggested_date(c.get("event_date_suggested", "")),

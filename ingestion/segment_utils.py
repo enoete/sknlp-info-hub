@@ -26,6 +26,19 @@ def mmss_to_seconds(mmss: str):
     return None
 
 
+def seconds_to_mmss(seconds) -> str:
+    """99 -> '1:39'. Inverse of mmss_to_seconds, used by
+    extract_long_video()'s chunk-offset merge to convert an absolute
+    (chunk-offset-added) second count back into the MM:SS string shape
+    every other timestamp field in this pipeline already expects."""
+    seconds = max(0, int(round(seconds)))
+    h, rem = divmod(seconds, 3600)
+    m, s = divmod(rem, 60)
+    if h:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
 def find_enclosing_segment(claim_seconds: int, raw_segments: list):
     """Which of Gemini's broader speaker-turn segments actually contains
     this claim's timestamp — used only to borrow real speaker/role

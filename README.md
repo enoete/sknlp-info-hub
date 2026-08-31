@@ -113,9 +113,20 @@ python3 -m venv venv
 ./venv/bin/pip install -r requirements.txt
 export GEMINI_API_KEY=your_key_here
 export DATABASE_URL=postgresql://sknlp_app:PASSWORD@127.0.0.1:5433/sknlp_info_hub
+
+# Only needed for videos long enough to exceed Gemini's 1,048,576-token
+# input ceiling even at MEDIA_RESOLUTION_LOW (confirmed on real multi-hour
+# National Assembly sittings) -- extract_from_video.py falls back to
+# chunked extraction (video_chunking.py) for those, and chunking needs an
+# exact video duration, which this key provides via the YouTube Data API
+# v3 (free tier, 10,000 quota units/day, 1 unit per lookup). One-time
+# setup: in the same Google Cloud project as GEMINI_API_KEY, enable
+# "YouTube Data API v3" in Cloud Console, then reuse an unrestricted key
+# or create a new one restricted to that API.
+export YOUTUBE_DATA_API_KEY=your_key_here
 ```
 
-Two entrypoints, both writing real `pending_review` rows (+
+Three entrypoints, all writing real `pending_review` rows (+
 `transcript_segments` for deep-linking) into the database, never straight
 to `stdout` only:
 
@@ -127,7 +138,19 @@ to `stdout` only:
 # at --max-new per run (default 3) so a channel with years of backlog
 # doesn't get force-fed in one sweep:
 ./venv/bin/python3 run_channel_discovery.py --registry-id <uuid> --max-new 3
+
+# Batch-ingest a filtered list of historical-backfill candidates (see
+# discover_channel.py's find_historical_candidates()), skipping anything
+# already ingested and stopping after --limit videos:
+./venv/bin/python3 run_batch.py --registry-id <uuid> --candidates <path.json> \
+    --categories "PM/Minister statement,Press conference" --limit 10
 ```
+
+Videos long/short: `run_ingestion.py` and `run_batch.py` both call
+`extract_with_chunking_fallback()`, which tries one direct call first and
+only pays the much more expensive per-window chunked path
+(`extract_long_video()`) if that fails with the specific token-ceiling
+error — most videos never trigger it.
 
 Both respect the Aug 5, 2022 scope cutoff (`scope_config.py`) and share
 the same safety-verified write path (`ingest_one_video` in

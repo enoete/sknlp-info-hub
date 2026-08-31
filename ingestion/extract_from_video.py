@@ -12,8 +12,11 @@ rule as manual entry, just with the drafting done for you instead of by
 hand.
 
 Setup:
-    pip install google-genai
+    pip install -r requirements.txt   # see requirements.txt, run inside a venv
     export GEMINI_API_KEY=your_key_here
+    export YOUTUBE_DATA_API_KEY=your_key_here   # only needed for videos long
+        # enough to trigger the chunked-extraction fallback -- see
+        # video_chunking.py's module docstring for why this is required
 
 Usage:
     python extract_from_video.py "https://www.youtube.com/watch?v=XXXXXXXX" \
@@ -29,8 +32,14 @@ import argparse
 import json
 import os
 import sys
+import time
+
 import requests
 from google import genai
+from google.genai import errors as genai_errors
+
+from segment_utils import mmss_to_seconds, seconds_to_mmss
+from video_chunking import DEFAULT_CHUNK_SECONDS, compute_chunk_windows, get_video_duration_seconds
 
 # Known figures to help Gemini attempt named identification instead of
 # generic "Speaker 1" / "Speaker 2" labels. Keep this list current —
@@ -53,6 +62,30 @@ CATEGORIES = [
 ]
 
 SENTIMENTS = ["positive", "neutral", "negative", "critical"]
+
+# Sub-classification within stance='accomplishment' only -- see
+# schema.sql's claims.accomplishment_type comment for why this exists
+# separately from stance. Definitions kept short and mutually
+# distinguishable so the model doesn't have to guess at the boundary:
+ACCOMPLISHMENT_TYPES = ["Accomplishment", "Policy Decision", "Strategic Decision", "Ongoing Initiative"]
+# Sentinel for stance='opposition_statement', where this field doesn't
+# apply. Not an empty string -- Gemini's response_schema validator rejects
+# an empty string as an enum value (confirmed: real 400 INVALID_ARGUMENT,
+# "enum[...] cannot be empty"), so this needs a real non-empty token.
+# run_ingestion.py/backfill scripts normalize this back to NULL before it
+# ever reaches the DB (see schema.sql's CHECK constraint, which has no
+# 'N/A' in its allowed set on purpose).
+ACCOMPLISHMENT_TYPE_NA = "N/A"
+
+
+def normalize_accomplishment_type(value) -> str | None:
+    """The model's raw accomplishment_type value -> what actually belongs
+    in claims.accomplishment_type (NULL for the N/A sentinel, an empty
+    value, or anything else that isn't one of the real types -- the DB's
+    own CHECK constraint would reject a stray value anyway, so fail safe
+    to NULL rather than let an INSERT error take down a whole batch)."""
+    value = (value or "").strip()
+    return value if value in ACCOMPLISHMENT_TYPES else None
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -103,6 +136,26 @@ RESPONSE_SCHEMA = {
                     "title": {"type": "string", "description": "Short, neutral label for the claim, under 12 words."},
                     "summary": {"type": "string", "description": "1-2 sentence paraphrase in plain language. Do not quote more than a short phrase verbatim."},
                     "category": {"type": "string", "enum": CATEGORIES},
+                    "accomplishment_type": {
+                        "type": "string",
+                        "enum": ACCOMPLISHMENT_TYPES + [ACCOMPLISHMENT_TYPE_NA],
+                        "description": (
+                            f"REQUIRED for stance='accomplishment'; '{ACCOMPLISHMENT_TYPE_NA}' for "
+                            "stance='opposition_statement' (this field doesn't apply to opposition claims). "
+                            "For an accomplishment claim, pick exactly one: "
+                            "'Accomplishment' = a completed, concrete deliverable — a project finished, a facility "
+                            "built/opened, a service actually launched, a benefit actually delivered. "
+                            "'Policy Decision' = a formal policy/law/regulation/rate adopted or changed — decided "
+                            "and in effect, but not a physical thing built. "
+                            "'Strategic Decision' = a directional commitment — a partnership, MOU, membership, "
+                            "framework agreement, or stated strategic plan — a choice of direction, not yet a "
+                            "specific delivered project or codified policy. "
+                            "'Ongoing Initiative' = clearly still in progress — a program actively running, a "
+                            "groundbreaking/launch of a multi-phase effort, an expansion underway — explicitly not "
+                            "finished yet. Choose based on what the video actually states about completion status; "
+                            "don't guess 'Accomplishment' by default just because it's the government's own claim."
+                        ),
+                    },
                     "sentiment": {
                         "type": "string",
                         "enum": SENTIMENTS,
@@ -123,7 +176,7 @@ RESPONSE_SCHEMA = {
                         "description": "low if the claim is vague, ambiguous, or you're inferring rather than reading a direct statement"
                     }
                 },
-                "required": ["stance", "title", "summary", "category", "sentiment", "citizen_impact_suggested", "event_date_suggested", "start_timestamp", "extraction_confidence"]
+                "required": ["stance", "title", "summary", "category", "accomplishment_type", "sentiment", "citizen_impact_suggested", "event_date_suggested", "start_timestamp", "extraction_confidence"]
             }
         }
     },
@@ -152,7 +205,7 @@ def fetch_video_metadata(youtube_url: str) -> dict:
         return {"title": "", "channel": ""}
 
 
-def build_prompt(source_type: str, category_hint: str, video_title: str, channel_name: str) -> str:
+def build_prompt(source_type: str, category_hint: str, video_title: str, channel_name: str, chunk_context: dict | None = None) -> str:
     figures_list = "\n".join(f"- {f}" for f in KNOWN_FIGURES)
     metadata_block = ""
     if video_title or channel_name:
@@ -163,11 +216,26 @@ what you see/hear in the video itself, not instead of it):
 - Title: {video_title or '(not available)'}
 - Channel: {channel_name or '(not available)'}
 """
+    chunk_block = ""
+    if chunk_context:
+        chunk_block = f"""
+IMPORTANT — this clip is part {chunk_context['index'] + 1} of {chunk_context['total']} of one
+longer recording, split only because of a technical length limit; it is
+NOT a standalone video. It may start or end mid-sentence/mid-proceeding —
+that's expected, don't treat an abrupt start/end as anything unusual.
+Report every start_timestamp/end_timestamp relative to THIS CLIP, starting
+at 0:00 — never guess at or reconstruct the original full-video time, the
+correct offset is added automatically afterward. If a speaker was already
+introduced in an earlier part you don't have access to, still identify
+them here if the on-screen text, context, or your own recognition of a
+known figure (see below) makes it clear — don't down-rate confidence
+purely because the introduction happened outside this clip.
+"""
     return f"""
 You are drafting entries for a fact-sourced political archive. Watch and
 listen to this video and extract structured information. Be conservative:
 when in doubt, mark confidence as 'low' rather than guessing.
-{metadata_block}
+{metadata_block}{chunk_block}
 Known figures who may appear (use this to help identify speakers, but only
 mark speaker_confidence as 'high' if the identity is actually clear from
 one or more of: the video title, the channel, an on-screen name/lower
@@ -189,36 +257,236 @@ Never invent a claim that isn't actually stated in the video.
 """
 
 
+# Default video processing costs enough tokens/frame that a multi-hour
+# National Assembly sitting alone can approach the model's 1,048,576-token
+# input ceiling (confirmed: two real sittings failed with 400
+# INVALID_ARGUMENT / token count exceeded before this was set). LOW trades
+# some fine visual detail (reading small on-screen text) for roughly 4-5x
+# more video fitting in the same budget -- an acceptable trade here since
+# speaker identification already leans on video title/channel metadata fed
+# in explicitly (see fetch_video_metadata/build_prompt), not on reading
+# on-screen credits at high fidelity. Shared by both the single-call path
+# and each per-chunk call in extract_long_video() below.
+GEMINI_GENERATE_CONFIG = {
+    "response_mime_type": "application/json",
+    "response_schema": RESPONSE_SCHEMA,
+    "media_resolution": "MEDIA_RESOLUTION_LOW",
+}
+
+
+# Between the confirmed-safe 2h03m data point and the confirmed-failing
+# 3h53m one (see video_chunking.DEFAULT_CHUNK_SECONDS's comment for the
+# real numbers this project measured). Below this, try a single call
+# first -- cheap, and works for the overwhelming majority of videos. At or
+# above it, skip straight to chunking rather than waiting for a failure:
+# direct testing showed Gemini's failure mode for an oversized request
+# ISN'T even consistent (400 token-ceiling once, 500 INTERNAL on an
+# identical retry of the same video) -- a known-real duration is a far
+# more reliable signal than any specific error string Gemini happens to
+# return that day.
+LONG_VIDEO_CHUNK_THRESHOLD_SECONDS = 8100  # 2h15m
+
+
+def _is_likely_size_related_error(exc: Exception) -> bool:
+    """Best-effort fallback signal for when the proactive duration check
+    in extract_with_chunking_fallback() couldn't run (YOUTUBE_DATA_API_KEY
+    unset/lookup failed) -- catches both observed real failure shapes for
+    an oversized single-call request: the clean 400 'token count exceeds'
+    validation error, and the less specific 500 INTERNAL that the same
+    8h10m video also produced on a retry. Not a fully reliable signal on
+    its own (a 500 INTERNAL could in principle be an unrelated transient
+    fault) -- this is why the proactive duration check is the primary
+    defense and this is only the secondary one."""
+    if isinstance(exc, genai_errors.ClientError) and "token count exceeds" in str(exc):
+        return True
+    if isinstance(exc, genai_errors.ServerError) and "INTERNAL" in str(exc):
+        return True
+    return False
+
+
+# Transient overload, not a real failure -- Google's own message says so
+# ("Spikes in demand are usually temporary"). Seen repeatedly today across
+# unrelated calls. A long chunked extraction (up to several Gemini calls
+# per video) is especially exposed to this: one blip on chunk 4 of 6
+# shouldn't throw away the previous 3 successful calls, so every
+# generate_content call in this module goes through this retry wrapper
+# rather than each call site reimplementing its own backoff.
+_TRANSIENT_RETRY_DELAYS_SECONDS = (10, 30, 60)
+
+
+def _generate_with_retry(client, **kwargs):
+    last_exc = None
+    for attempt, delay in enumerate((*_TRANSIENT_RETRY_DELAYS_SECONDS, None)):
+        try:
+            return client.models.generate_content(**kwargs)
+        except genai_errors.ServerError as e:
+            if "UNAVAILABLE" not in str(e) and "high demand" not in str(e):
+                raise
+            last_exc = e
+            if delay is None:
+                raise
+            print(f"Transient 503 (attempt {attempt + 1}/{len(_TRANSIENT_RETRY_DELAYS_SECONDS) + 1}), "
+                  f"retrying in {delay}s: {e}", file=sys.stderr)
+            time.sleep(delay)
+    raise last_exc  # pragma: no cover -- loop above always returns or raises
+
+
 def extract(youtube_url: str, source_type: str, category_hint: str, model: str = "gemini-3.6-flash") -> dict:
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     metadata = fetch_video_metadata(youtube_url)
 
-    response = client.models.generate_content(
+    response = _generate_with_retry(
+        client,
         model=model,
         contents=[
             {"file_data": {"file_uri": youtube_url, "mime_type": "video/mp4"}},
             {"text": build_prompt(source_type, category_hint, metadata["title"], metadata["channel"])},
         ],
-        config={
-            "response_mime_type": "application/json",
-            "response_schema": RESPONSE_SCHEMA,
-            # Default video processing costs enough tokens/frame that a
-            # multi-hour National Assembly sitting alone can approach the
-            # model's 1,048,576-token input ceiling (confirmed: two real
-            # sittings failed with 400 INVALID_ARGUMENT / token count
-            # exceeded before this was set). LOW trades some fine visual
-            # detail (reading small on-screen text) for roughly 4-5x more
-            # video fitting in the same budget -- an acceptable trade here
-            # since speaker identification already leans on video
-            # title/channel metadata fed in explicitly (see
-            # fetch_video_metadata/build_prompt), not on reading on-screen
-            # credits at high fidelity.
-            "media_resolution": "MEDIA_RESOLUTION_LOW",
-        },
+        config=GEMINI_GENERATE_CONFIG,
     )
     result = json.loads(response.text)
     result["_video_metadata"] = metadata
     return result
+
+
+def extract_chunk(client, youtube_url: str, source_type: str, category_hint: str,
+                   video_title: str, channel_name: str, start_seconds: int, end_seconds: int,
+                   chunk_index: int, total_chunks: int, model: str = "gemini-3.6-flash") -> dict:
+    """Same extraction as extract(), but against one time window of the
+    video via video_metadata.start_offset/end_offset instead of the whole
+    thing -- Gemini clips server-side from the same YouTube file_data URI,
+    so this needs no local download/upload at all (see video_chunking.py's
+    module docstring for why that matters on this droplet specifically).
+    start_seconds/end_seconds are always real, API-confirmed boundaries
+    (video_chunking.compute_chunk_windows), never a guess past the video's
+    actual end -- Gemini has been confirmed to invent plausible content
+    for an out-of-range offset rather than reporting anything wrong, so
+    the correctness burden sits entirely on the caller passing in real
+    windows, not on this function detecting a bad one."""
+    response = _generate_with_retry(
+        client,
+        model=model,
+        contents=[
+            {
+                "file_data": {"file_uri": youtube_url, "mime_type": "video/mp4"},
+                "video_metadata": {"start_offset": f"{start_seconds}s", "end_offset": f"{end_seconds}s"},
+            },
+            {"text": build_prompt(
+                source_type, category_hint, video_title, channel_name,
+                chunk_context={"index": chunk_index, "total": total_chunks},
+            )},
+        ],
+        config=GEMINI_GENERATE_CONFIG,
+    )
+    return json.loads(response.text)
+
+
+def extract_long_video(youtube_url: str, source_type: str, category_hint: str,
+                        model: str = "gemini-3.6-flash", chunk_seconds: int = DEFAULT_CHUNK_SECONDS) -> dict:
+    """Look up the video's real duration (YouTube Data API v3 -- see
+    video_chunking.get_video_duration_seconds), compute non-overlapping
+    chunk_seconds-long windows that never extend past that real duration,
+    extract each window separately (extract_chunk), then merge results
+    back into one video-absolute-timestamped output shaped exactly like
+    extract()'s return value -- so callers (run_ingestion.py) don't need
+    separate handling for the chunked path. Only meant to be called when a
+    direct extract() call has already failed with the token-ceiling
+    error; see extract_with_chunking_fallback().
+
+    Real, non-trivial cost: one Gemini call per chunk_seconds window
+    (e.g. a 4-hour sitting is 8 separate calls at the 30-min default).
+    Not the default path for a reason."""
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    metadata = fetch_video_metadata(youtube_url)
+
+    duration = get_video_duration_seconds(youtube_url)
+    windows = compute_chunk_windows(duration, chunk_seconds=chunk_seconds)
+    print(f"{youtube_url}: {duration / 60:.0f} min total, {len(windows)} chunk(s) of up to {chunk_seconds // 60} min.", file=sys.stderr)
+
+    video_summaries = []
+    all_segments = []
+    all_claims = []
+    for i, (start_seconds, end_seconds) in enumerate(windows):
+        print(f"Extracting chunk {i + 1}/{len(windows)} ({start_seconds // 60}-{end_seconds // 60} min)...", file=sys.stderr)
+        chunk_result = extract_chunk(
+            client, youtube_url, source_type, category_hint,
+            metadata["title"], metadata["channel"],
+            start_seconds=start_seconds, end_seconds=end_seconds,
+            chunk_index=i, total_chunks=len(windows), model=model,
+        )
+
+        if chunk_result.get("video_summary"):
+            video_summaries.append(chunk_result["video_summary"])
+
+        for seg in chunk_result.get("segments", []):
+            all_segments.append(_offset_timestamps(seg, start_seconds, ("start_timestamp", "end_timestamp")))
+        for claim in chunk_result.get("candidate_claims", []):
+            all_claims.append(_offset_timestamps(claim, start_seconds, ("start_timestamp",)))
+
+    result = {
+        "video_summary": " / ".join(video_summaries) or "(no content extracted)",
+        "segments": all_segments,
+        "candidate_claims": all_claims,
+        "_video_metadata": metadata,
+        "_chunked": True,
+        "_chunk_count": len(windows),
+    }
+    return result
+
+
+def _offset_timestamps(obj: dict, offset_seconds: float, fields: tuple) -> dict:
+    """Convert the named MM:SS fields on a raw segment/claim dict from
+    chunk-relative to full-video-absolute, in place on a shallow copy.
+    Leaves a field untouched (rather than raising) if it doesn't parse --
+    same conservative posture as mmss_to_seconds itself."""
+    obj = dict(obj)
+    for field in fields:
+        parsed = mmss_to_seconds(obj.get(field, ""))
+        if parsed is not None:
+            obj[field] = seconds_to_mmss(parsed + offset_seconds)
+    return obj
+
+
+def extract_with_chunking_fallback(youtube_url: str, source_type: str, category_hint: str,
+                                    model: str = "gemini-3.6-flash") -> dict:
+    """The entrypoint run_ingestion.py and run_batch.py actually call.
+
+    Primary path: look up the video's real duration (YouTube Data API v3)
+    and decide upfront -- below LONG_VIDEO_CHUNK_THRESHOLD_SECONDS, try
+    the fast, cheap single-call extract() (the overwhelming majority of
+    videos); at or above it, go straight to the more expensive
+    extract_long_video() without wasting a call that's known likely to
+    fail. This is deterministic and doesn't depend on Gemini returning any
+    particular error shape for an oversized request (confirmed it
+    doesn't -- see _is_likely_size_related_error's docstring).
+
+    Fallback path: if the duration lookup itself fails (no
+    YOUTUBE_DATA_API_KEY set, video not found, network issue), fall back
+    to the old reactive behavior -- try extract() and only chunk if it
+    fails with a size-shaped error. Any other exception (auth error,
+    permission denied on a specific video, network failure) is re-raised
+    as-is -- chunking wouldn't fix those, so there's no reason to pay for
+    it."""
+    try:
+        duration = get_video_duration_seconds(youtube_url)
+    except Exception as e:
+        duration = None
+        print(f"{youtube_url}: couldn't look up duration ({e}); will only chunk reactively on failure.", file=sys.stderr)
+
+    if duration is not None and duration >= LONG_VIDEO_CHUNK_THRESHOLD_SECONDS:
+        print(f"{youtube_url}: {duration / 60:.0f} min, at/above the "
+              f"{LONG_VIDEO_CHUNK_THRESHOLD_SECONDS // 60}-min chunking threshold -- "
+              f"skipping the single-call attempt.", file=sys.stderr)
+        return extract_long_video(youtube_url, source_type, category_hint, model=model)
+
+    try:
+        return extract(youtube_url, source_type, category_hint, model=model)
+    except Exception as e:
+        if not _is_likely_size_related_error(e):
+            raise
+        print(f"{youtube_url}: single call failed with a size-shaped error ({e}); "
+              f"falling back to chunked extraction.", file=sys.stderr)
+        return extract_long_video(youtube_url, source_type, category_hint, model=model)
 
 
 def to_review_queue_rows(extraction: dict, youtube_url: str, source_type: str) -> list:
@@ -234,6 +502,7 @@ def to_review_queue_rows(extraction: dict, youtube_url: str, source_type: str) -
             "title": claim["title"],
             "summary": claim["summary"],
             "category": claim["category"],
+            "accomplishment_type": normalize_accomplishment_type(claim["accomplishment_type"]),
             "sentiment": claim["sentiment"],
             "citizen_impact_suggested": claim["citizen_impact_suggested"],
             "event_date_suggested": claim["event_date_suggested"],
@@ -257,7 +526,7 @@ if __name__ == "__main__":
         print("Set GEMINI_API_KEY before running.", file=sys.stderr)
         sys.exit(1)
 
-    extraction = extract(args.youtube_url, args.source_type, args.category_hint)
+    extraction = extract_with_chunking_fallback(args.youtube_url, args.source_type, args.category_hint)
     review_rows = to_review_queue_rows(extraction, args.youtube_url, args.source_type)
 
     print(json.dumps({
