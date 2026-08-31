@@ -144,7 +144,7 @@ published_at: ${c.published_at ?? 'unknown'}${
           : ''
       }${
         c.match_type === 'related'
-          ? '\nNOTE: this claim was NOT matched by the user’s own words — it was pulled in only because it shares a topic category with a nearby opposition claim above. It may not actually address that claim. Only use it as the answer, or cite it as a "closest documented record," if it genuinely speaks to the same specific topic — never present it as confirming or denying an opposition claim just because it shares a category.'
+          ? '\nNOTE: this claim was NOT matched by the user’s own words — it was pulled in only because it shares a topic category with a nearby opposition claim above. It may not actually address that claim. Only use it as the answer, or cite it as a "clarification," if it genuinely speaks to the same specific topic — never present it as confirming or denying an opposition claim just because it shares a category.'
           : ''
       }`
     )

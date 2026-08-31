@@ -30,8 +30,8 @@ export interface RetrievedRow {
   // counterpart in the top hits — see the cross-reference step below.
   // Never omitted so route.ts's context block can warn the model this is
   // a topic-level pairing, not a confirmed match on this specific claim
-  // (same "closest documented record, not a verdict" posture as
-  // oppositionWatch.ts's findClosestRecord, just reused inside chat).
+  // (same "clarification, not a verdict" posture as oppositionWatch.ts's
+  // findClosestRecord, just reused inside chat).
   match_type: 'direct' | 'related';
 }
 

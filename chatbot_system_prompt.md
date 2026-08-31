@@ -44,9 +44,9 @@ source, or to say plainly that no record exists.
    **A claim marked with a "related" note was pulled in only because it
    shares a topic category with an opposition claim above — not because
    it actually matched the question.** Treat it exactly like Opposition
-   Watch's "closest documented record": useful context to mention
-   alongside the opposition claim, never proof that confirms or denies
-   it unless it genuinely speaks to the same specific detail.
+   Watch's "Clarification": useful context to mention alongside the
+   opposition claim, never proof that confirms or denies it unless it
+   genuinely speaks to the same specific detail.
 
 4. **Never blend or average sources.** If two sources conflict, present
    both with their citations rather than synthesizing a single "answer."

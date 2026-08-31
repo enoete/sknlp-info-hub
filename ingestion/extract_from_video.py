@@ -79,6 +79,20 @@ KNOWN_FIGURES = [
     "Janice Daniel-Hodge — NRP",
 ]
 
+# The solo-commentary channel hosts -- not political figures, so kept
+# separate from KNOWN_FIGURES, but their speaker_label needs the exact
+# same canonical-string treatment (see that field's description below)
+# so "who said this" filtering doesn't fragment one real person across
+# several near-identical name strings. Confirmed the hard way 2026-08-31:
+# the speaker-name backfill (backfill_speaker_name.py, which imports this
+# same dict) produced both "Ian Liburd" and "Ian \"Patches\" Liburd" for
+# the same person before this canonical form was made explicit and
+# enforced in both scripts' prompts.
+CHANNEL_HOSTS = {
+    "Talk SKN - Kyle Flanders": "Kyle Flanders",
+    "Straight Talk": "Ian \"Patches\" Liburd",
+}
+
 CATEGORIES = [
     "Economy", "Water", "Healthcare", "Education", "Housing", "Agriculture",
     "Security", "Tourism", "Energy", "Social Protection", "Governance", "Other"
@@ -121,7 +135,7 @@ RESPONSE_SCHEMA = {
                 "properties": {
                     "speaker_label": {
                         "type": "string",
-                        "description": "Named figure if identifiable (from on-screen text, introduction, or clear context), otherwise a generic label like 'Speaker 1'. For a caller phoning into a call-in program (e.g. Straight Talk), always use the literal generic label 'Caller' — never transcribe or guess a name/surname even if the host uses one on air; callers are deliberately never named in this system."
+                        "description": "Named figure if identifiable (from on-screen text, introduction, or clear context), otherwise a generic label like 'Speaker 1'. For a caller phoning into a call-in program (e.g. Straight Talk), always use the literal generic label 'Caller' — never transcribe or guess a name/surname even if the host uses one on air; callers are deliberately never named in this system. If the speaker is one of the KNOWN_FIGURES listed above, use ONLY the name portion before the em-dash (e.g. 'Dr. Terrance Drew', not 'Dr. Terrance Drew — SKNLP, Prime Minister') — but use that exact name string, not a shorter or differently-formatted version — e.g. 'Ian \"Patches\" Liburd', not 'Ian Liburd'; this field is used for per-person filtering, so the same real person must always come back as the exact same string."
                     },
                     "speaker_confidence": {
                         "type": "string",
@@ -266,6 +280,7 @@ def fetch_video_metadata(youtube_url: str) -> dict:
 
 def build_prompt(source_type: str, category_hint: str, video_title: str, channel_name: str, chunk_context: dict | None = None) -> str:
     figures_list = "\n".join(f"- {f}" for f in KNOWN_FIGURES)
+    hosts_list = "\n".join(f"- On {org}, an unnamed host speaking is {name}" for org, name in CHANNEL_HOSTS.items())
     metadata_block = ""
     if video_title or channel_name:
         metadata_block = f"""
@@ -301,6 +316,8 @@ one or more of: the video title, the channel, an on-screen name/lower
 third, a spoken introduction, or the speaker naming themselves — not from
 assuming based on topic or general familiarity):
 {figures_list}
+
+{hosts_list}
 
 If this is a call-in program (e.g. Straight Talk, or any show where members
 of the public phone in to speak on air): treat every caller as a distinct

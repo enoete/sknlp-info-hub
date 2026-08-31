@@ -39,19 +39,10 @@ import psycopg2
 import psycopg2.extras
 from google import genai
 
-from extract_from_video import KNOWN_FIGURES, _generate_with_retry
+from extract_from_video import CHANNEL_HOSTS, KNOWN_FIGURES, _generate_with_retry
 
 BATCH_SIZE = 15
 UNKNOWN = "UNKNOWN"
-
-# The two solo-commentary channel hosts -- not in KNOWN_FIGURES (that
-# list is political figures), but exactly who "Host" resolves to on
-# their respective channels. Verified via each channel's own About text
-# earlier this session (see CLAUDE.md's "Fourth source category").
-CHANNEL_HOSTS = {
-    "Talk SKN - Kyle Flanders": "Kyle Flanders",
-    "Straight Talk": "Ian \"Patches\" Liburd",
-}
 
 CLASSIFY_SCHEMA = {
     "type": "object",
@@ -91,6 +82,13 @@ Known figures who may appear:
 {figures_list}
 
 {hosts_list}
+
+IMPORTANT: if the person you identify is one of the known figures above,
+return their name EXACTLY as written in that list, even if the claim's
+own text uses a shorter or differently-formatted version (e.g. the text
+says "Ian Liburd" but the list says 'Ian "Patches" Liburd' -- return the
+list's form). This field is used for filtering, so the same person must
+always come back as the exact same string -- never a variant.
 
 If the text genuinely does not name anyone identifiable -- a vague
 attribution, a generic role with no name given, anything you'd be

@@ -13,8 +13,8 @@ export default async function OppositionWatchPage() {
         <div className={styles.eyebrow}>Opposition watch</div>
         <h1>CLAIM, MEET RECORD</h1>
         <p>
-          Statements made publicly against the party, shown next to the closest matching documented
-          record. No verdicts — just both, side by side, sourced.
+          Statements made publicly against the party, shown next to the closest available
+          clarification from the government&apos;s own record. No verdicts — just both, side by side, sourced.
         </p>
       </div>
 

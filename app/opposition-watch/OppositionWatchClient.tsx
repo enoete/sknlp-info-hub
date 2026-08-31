@@ -58,13 +58,13 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
           className={`${styles.pill} ${statusFilter === 'undocumented' ? styles.pillActive : ''}`}
           onClick={() => setStatusFilter('undocumented')}
         >
-          No record yet
+          No clarification yet
         </span>
         <span
           className={`${styles.pill} ${statusFilter === 'documented' ? styles.pillActive : ''}`}
           onClick={() => setStatusFilter('documented')}
         >
-          Documented
+          Clarified
         </span>
         <div className={styles.filterSep} />
         <span
@@ -135,7 +135,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
                     {p.category ?? 'Uncategorized'}
                   </span>
                   <span className={`${styles.statusChip} ${documented ? styles.statusDocumented : styles.statusUndocumented}`}>
-                    {documented ? 'Documented' : 'No record yet'}
+                    {documented ? 'Clarified' : 'No clarification yet'}
                   </span>
                 </div>
               </div>
@@ -154,7 +154,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
 
               {p.record ? (
                 <div className={`${styles.oppoHalf} ${styles.oppoHalfRecord}`}>
-                  <div className={styles.oppoTag}>Closest documented record</div>
+                  <div className={styles.oppoTag}>Clarification</div>
                   <p>{p.record.summary}</p>
                   <div className={styles.metaLine}>
                     {p.record.speaker_org} — {p.record.source_title} &middot;{' '}
@@ -166,8 +166,8 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
                 </div>
               ) : (
                 <div className={`${styles.oppoHalf} ${styles.oppoHalfNone}`}>
-                  <div className={styles.oppoTag}>No official record found</div>
-                  <p>This isn&apos;t a denial — it just means nothing documented addresses this specific claim yet.</p>
+                  <div className={styles.oppoTag}>No clarification yet</div>
+                  <p>This isn&apos;t a denial — it just means nothing on record addresses this specific claim yet.</p>
                 </div>
               )}
             </div>

@@ -99,10 +99,10 @@ export default async function ClaimDetailPage({ params }: { params: { id: string
 
           {isOpposition && (
             <div className={styles.block}>
-              <h4>Closest documented record</h4>
+              <h4>Clarification</h4>
               {claim.closest_record ? (
                 <div className={styles.compareBox}>
-                  <span className={styles.compareTag}>Official record</span>
+                  <span className={styles.compareTag}>Government's side</span>
                   <p>{claim.closest_record.title}</p>
                   <a
                     className={styles.compareLink}
@@ -116,10 +116,10 @@ export default async function ClaimDetailPage({ params }: { params: { id: string
                 </div>
               ) : (
                 <div className={`${styles.compareBox} ${styles.compareBoxNone}`}>
-                  <span className={styles.compareTag}>No record found</span>
+                  <span className={styles.compareTag}>No clarification yet</span>
                   <p>
-                    No official record found in this category yet. This isn&apos;t a denial — it just means no
-                    matching documented accomplishment is on file.
+                    Nothing on file addresses this specific claim yet. This isn&apos;t a denial — it just means
+                    no matching accomplishment has been documented so far.
                   </p>
                 </div>
               )}
