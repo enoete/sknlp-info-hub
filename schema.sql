@@ -10,6 +10,16 @@
 -- still has to register it explicitly before VECTOR columns/ops work.
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Trigram similarity — used to catch near-duplicate claims.title across
+-- overlapping seed batches (real incident: three claims were seeded
+-- twice, word-for-word or near-identical, from two seed files covering
+-- the same underlying 4P campaign material). Re-run before trusting a
+-- new batch of seeded/ingested claims:
+--   SELECT a.id, b.id, a.title, b.title, similarity(a.title, b.title)
+--   FROM claims a JOIN claims b ON a.id < b.id
+--   WHERE similarity(a.title, b.title) > 0.35 ORDER BY 5 DESC;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TYPE source_type AS ENUM ('official_party', 'official_govt', 'opposition', 'press', 'third_party');
 CREATE TYPE ingestion_channel AS ENUM ('youtube', 'sknis', 'press_release', 'social_post', 'admin_upload', 'manual_entry');
 CREATE TYPE review_status AS ENUM ('pending_review', 'approved', 'rejected', 'needs_edit');
