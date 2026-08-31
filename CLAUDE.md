@@ -921,6 +921,92 @@ earlier "groundbreaking held" claim).
   depends on — never remove or weaken rule 5b's "never claim something
   was completed unless a linked claim actually says so" instruction.
 
+## SKNIS website ingestion (built 2026-08-31)
+
+Prompted by a real, demonstrated gap: asking "Ask the Record" about the
+Destiny project could only surface opposition allegations, because the
+government's own direct statements on it exist only as SKNIS
+(sknis.gov.kn) press releases — pure text, no video — so the video-only
+pipeline had zero access to them. `sources_registry` had an SKNIS row
+already (`platform='sknis'`, id `4ba9a62b-7ac6-46ea-948d-1179890060ba`),
+but per the "Ingestion agent" section above, a registry row alone
+ingests nothing — there was no text-extraction pipeline at all until
+now, the same gap already flagged for WINN FM/Freedom FM/ZIZ's own news
+sites (still true for those three; only SKNIS is built).
+
+**Confirmed real and worth building**: sknis.gov.kn is WordPress with a
+live RSS feed (`/feed/`) and ministry-tagged categories matching the
+current Cabinet. Sitemap math (19 post-sitemap pages) puts the in-scope
+window (Aug 2022+) at roughly 3,800 posts, ~80/month — real volume, not
+overwhelming. Noise is real too (job postings, generic notices, event
+photos) — needs the same high-value filtering ZIZ's historical backfill
+already established.
+
+- `ingestion/extract_from_article.py` — sibling to `extract_from_video.py`,
+  reuses its constants directly (`CATEGORIES`, `SENTIMENTS`,
+  `ACCOMPLISHMENT_TYPES`, `KNOWN_FIGURES`, `normalize_accomplishment_type`,
+  `_generate_with_retry`) rather than redefining them, same conservative
+  extraction philosophy and scope rules. No video/audio, so no chunking
+  and no timestamps — citation is just the article URL. `fetch_article()`
+  targets the theme's `entry-content` div specifically, not a generic
+  `<article>` tag — confirmed live this WordPress theme reuses `<article>`
+  for sidebar/"related posts" widgets too, so the naive selector grabbed
+  an unrelated widget headline every time before this fix.
+- **Speaker attribution is coarser than video's**: one article's primary
+  speaker goes on `sources.speaker_name`/`speaker_org` directly (both
+  already-existing columns), not a per-claim `transcript_segments` row —
+  there's no timestamp to anchor one to. Covers the common case (most
+  SKNIS releases are single-official statements); a genuine multi-official
+  roundup article loses per-claim speaker granularity. Documented gap,
+  not a silent one — same posture as every other scoping decision here.
+- `ingestion/run_article_ingestion.py` — the write path, same safety
+  guarantees as `run_ingestion.py` (`pending_review` verified before
+  commit, whole transaction rolls back on any deviation).
+- **Corroboration linking — the actually-new mechanism, per explicit
+  instruction** ("some of these will be duplicated by youtube... this is
+  where we will be able to buttress sources by stating the various
+  sources that talk about the same thing"). `claim_sources` was already
+  a many-to-many join table, and the claim detail page already renders
+  `"Documented with N independent sources"` — that path existed but
+  nothing had ever exercised it, since no ingestion script ever checked
+  "does an approved claim for this fact already exist" before inserting.
+  `find_matching_approved_claim()` now does: same stance/category,
+  `pg_trgm` `similarity(title, ...)` above `MIN_SIMILARITY = 0.35` to
+  narrow to real candidates, then `_is_same_claim()` — one Gemini call
+  per candidate asking whether it's genuinely the same specific fact, not
+  just the same topic/institution — same two-stage pattern (cheap
+  pre-filter, then real relevance judgment) that fixed the Opposition
+  Watch record-pairing bug, reused here because the failure mode is
+  identical: title/category similarity alone isn't reliable enough to
+  act on by itself, and merging two genuinely different claims under one
+  id would misattribute a citation — worse than the duplicate it's
+  avoiding. Verified live: a geothermal-funding SKNIS article correctly
+  did NOT merge with an existing "CDB Approval" claim (different funding
+  milestones, Dec 2022 CDB approval vs. Feb 2025 full-financing-secured —
+  related but genuinely distinct facts) — the conservative call is
+  exactly right there, not a miss.
+- `ingestion/run_website_discovery.py` — RSS-based discovery mirroring
+  `run_channel_discovery.py`'s role for YouTube channels, with a noise
+  filter (`is_probably_relevant()`, job/vacancy/notice/tender patterns)
+  before extraction is even attempted. Same RSS-feed limitation as
+  YouTube's discovery script: only reaches the ~10 most recent items,
+  no pagination — a real historical backfill (the ~3,800-post in-scope
+  window) needs a sitemap-walking approach like ZIZ's
+  `find_historical_candidates`, not yet built.
+- **Live-verified end to end**: ingested the 4 real SKNIS statements on
+  the Destiny project (Nov 2025 – Jul 2026) plus a small recent-articles
+  batch. Asking Ask the Record "What is the government's position on the
+  Destiny project?" now correctly answers from the government's own
+  statements instead of finding nothing beyond opposition allegations —
+  the exact gap this was built to close.
+- **Not yet built**: the sitemap-based historical backfill (above);
+  applying the same text-extraction pipeline to WINN FM/Freedom FM/ZIZ's
+  news sites (same WordPress/RSS shape, untested against them
+  specifically); extending corroboration-linking's `find_matching_approved_claim()`
+  to the video pipeline too (currently SKNIS-only, since that's what was
+  asked for — a YouTube video and an SKNIS article reporting the same
+  announcement would still create two separate claims today).
+
 ## What can be mocked/stubbed for the demo, what can't
 
 - **Can stub**: the ingestion agent (YouTube/sknis scraping), voice

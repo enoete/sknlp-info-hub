@@ -88,12 +88,30 @@ def get_extraction_schema_fields() -> set[str]:
     return set(RESPONSE_SCHEMA["properties"]["candidate_claims"]["items"]["properties"].keys())
 
 
+def get_article_extraction_schema_fields() -> set[str]:
+    # extract_from_article.py (SKNIS and similar text sources, added
+    # 2026-08-31) is a second, independent path that also writes to
+    # `claims` -- checked separately so a field added to one extractor
+    # but not the other doesn't silently pass just because the OTHER
+    # one covers it. It has no segment/timestamp concept (no video, no
+    # NON_COLUMN_EXTRACTION_FIELDS overlap expected), so its own
+    # "extras" are checked directly against db_columns, not that list.
+    from extract_from_article import RESPONSE_SCHEMA
+    return set(RESPONSE_SCHEMA["properties"]["candidate_claims"]["items"]["properties"].keys())
+
+
 def main() -> int:
     db_columns = get_claims_db_columns()
     extraction_fields = get_extraction_schema_fields()
+    article_fields = get_article_extraction_schema_fields()
 
-    unexplained_gap = db_columns - extraction_fields - set(EXCLUDED_COLUMNS)
+    # Gap check is against the UNION of both extractors -- a column only
+    # extract_from_article.py covers (or vice versa) is still covered,
+    # not a gap. Either extractor independently writing a field is
+    # enough to satisfy "this column has real extraction coverage."
+    unexplained_gap = db_columns - extraction_fields - article_fields - set(EXCLUDED_COLUMNS)
     unexplained_extras = extraction_fields - db_columns - set(NON_COLUMN_EXTRACTION_FIELDS)
+    unexplained_article_extras = article_fields - db_columns
 
     # Sanity-check the exclusion lists themselves don't reference columns/
     # fields that no longer exist (stale entries are their own drift risk).
@@ -112,11 +130,19 @@ def main() -> int:
 
     if unexplained_extras:
         ok = False
-        print("FAIL: RESPONSE_SCHEMA fields that don't match any claims column:")
+        print("FAIL: extract_from_video.py RESPONSE_SCHEMA fields that don't match any claims column:")
         for field in sorted(unexplained_extras):
             print(f"  - {field}")
         print("  -> Likely a naming drift bug (field renamed on one side, not the other),")
         print("     or add it to NON_COLUMN_EXTRACTION_FIELDS if it's genuinely not a claims column.")
+
+    if unexplained_article_extras:
+        ok = False
+        print("FAIL: extract_from_article.py RESPONSE_SCHEMA fields that don't match any claims column:")
+        for field in sorted(unexplained_article_extras):
+            print(f"  - {field}")
+        print("  -> Likely a naming drift bug -- extract_from_article.py has no segment/timestamp")
+        print("     concept, so unlike extract_from_video.py it shouldn't need a NON_COLUMN exclusion.")
 
     if stale_exclusions:
         ok = False
