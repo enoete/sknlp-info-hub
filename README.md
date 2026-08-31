@@ -110,7 +110,7 @@ a bare `pip install` fails. Use a venv, not `--break-system-packages`
 ```bash
 cd ingestion
 python3 -m venv venv
-./venv/bin/pip install google-genai psycopg2-binary requests
+./venv/bin/pip install -r requirements.txt
 export GEMINI_API_KEY=your_key_here
 export DATABASE_URL=postgresql://sknlp_app:PASSWORD@127.0.0.1:5433/sknlp_info_hub
 ```
