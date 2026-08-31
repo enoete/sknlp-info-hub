@@ -202,6 +202,18 @@ def extract(youtube_url: str, source_type: str, category_hint: str, model: str =
         config={
             "response_mime_type": "application/json",
             "response_schema": RESPONSE_SCHEMA,
+            # Default video processing costs enough tokens/frame that a
+            # multi-hour National Assembly sitting alone can approach the
+            # model's 1,048,576-token input ceiling (confirmed: two real
+            # sittings failed with 400 INVALID_ARGUMENT / token count
+            # exceeded before this was set). LOW trades some fine visual
+            # detail (reading small on-screen text) for roughly 4-5x more
+            # video fitting in the same budget -- an acceptable trade here
+            # since speaker identification already leans on video
+            # title/channel metadata fed in explicitly (see
+            # fetch_video_metadata/build_prompt), not on reading on-screen
+            # credits at high fidelity.
+            "media_resolution": "MEDIA_RESOLUTION_LOW",
         },
     )
     result = json.loads(response.text)
