@@ -271,6 +271,26 @@ Three outlets confirmed and characterized:
   record" in an Opposition Watch comparison — its independence is
   questionable by the client's own account, so treat it more like a second
   official-adjacent source than independent press.
+  **Update 2026-08-31**: ZIZ's YouTube channel — `@ZIZRadioTV`
+  (channel ID `UCMM3pFsfN2CYHpUa-xMbKQg`, confirmed live) — registered
+  in `sources_registry` (id `30d13b22-b154-48b8-a581-0e18f9011d1f`),
+  same `source_type = 'press'`/government-aligned caution as the
+  website. High-value and high-volume: confirmed via its public RSS
+  feed and a live web search that this channel posts daily (news,
+  talk shows) and carries real recordings of full National Assembly
+  sittings going back to at least 2023 — genuinely primary-source
+  Parliament content, not just ZIZ's own editorial framing, so the
+  government-aligned caution applies more to their news/talk content
+  than to a raw sitting recording. **Registering the source does not
+  ingest anything by itself** — see "Ingestion agent" above: there is
+  no automated channel crawler built yet (no code reads any
+  `detection_method`/RSS field automatically), only the one-video-at-
+  a-time `run_ingestion.py --registry-id <id>` path, which still
+  requires a human to already have the specific video URL. Someone
+  needs to either paste individual National Assembly sitting URLs in
+  for manual runs, or a real channel-level auto-discovery mechanism
+  (RSS polling) needs to get built — that's a deliberate scope
+  decision, not assumed as already covered.
 
 `source_type = 'press'` for all three, `tier = 'third_party'`. Confirm RSS
 feed availability at each (`/feed/` is the WordPress default path, likely
