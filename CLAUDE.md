@@ -356,6 +356,58 @@ view. Being built in stages, not all at once — see "Ingestion agent" above
 for the schema this depends on (`sources_registry.deleted_at`,
 `source_attachments`, `document_chunks`).
 
+## Schema status: designed vs. migrated — read this before assuming anything is live
+
+A decision documented in this file, or a table/column written into
+`schema.sql`, is **not evidence it exists in the live database.** This
+has now happened four separate times: the batch-1 seed data, the un-run
+`sources_registry` seed, the un-migrated Source Manager schema
+(`sources_registry.deleted_at`, `source_attachments`, `document_chunks`),
+and `chat_queries` (fully designed and referenced in this file, never
+written into `schema.sql` at all, never migrated — only caught when the
+"Dynamic starting suggestions" feature tried to query a table that
+didn't exist). Four times is a pattern, not bad luck.
+
+**Rule going forward:** any new table, column, or schema change gets an
+explicit status marker below the moment it's decided, not after it's
+built, not from memory. Two valid states only:
+
+- 📝 **Designed** — written into `schema.sql` and/or documented here, but
+  not yet confirmed against the live DB.
+- ✅ **Migrated** — confirmed live via an actual query (`\d <table>` or
+  `information_schema.columns`), with the date checked. Running the
+  migration isn't enough to earn ✅ — the row flips only after
+  independent verification, same bar as every other DB change in this
+  project. A memory of "I think I ran that" is not a ✅.
+
+| Table / column | Status | Verified |
+|---|---|---|
+| `sources_registry.deleted_at` | ✅ Migrated | 2026-08-30 |
+| `source_attachments` (table) | ✅ Migrated | 2026-08-30 |
+| `document_chunks` (table) | ✅ Migrated | 2026-08-30 |
+| `claims.citizen_impact_suggested` | ✅ Migrated | 2026-08-30 |
+| `claims.event_date_suggested` | ✅ Migrated | 2026-08-30 |
+| `chat_queries` (table) | ✅ Migrated | 2026-08-31 |
+| `pg_trgm` extension | ✅ Migrated | 2026-08-31 |
+
+One-time full audit completed 2026-08-31, prompted by the `chat_queries`
+gap: every table and column in `schema.sql` cross-checked
+programmatically (not read through by eye) against
+`information_schema.columns` on the live DB, plus every schema-adjacent
+decision named in this file's prose (`transcript_segments.speaker_title_at_time`,
+the `speaker_voice_samples`/`sample_origin` loop) confirmed present live.
+Zero drift found beyond the rows already listed above. Re-run the same
+comparison — not a manual read-through — the next time this needs
+checking:
+
+```sql
+-- live side
+SELECT table_name, column_name FROM information_schema.columns
+WHERE table_schema='public' ORDER BY table_name, ordinal_position;
+-- compare against schema.sql's CREATE TABLE ... ( ... ); blocks, same as
+-- tests/test_extraction_schema_sync.py already does for claims specifically.
+```
+
 ## Data model
 
 `schema.sql` is the full Postgres schema. Key tables: `claims` (the atomic
