@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import styles from './chat.module.css';
+import { sourceLinkLabel } from '@/app/lib/youtube';
 
 interface Citation {
   source_type?: string;
@@ -145,7 +146,7 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
                         {m.answer.citation?.published_at ? ` · ${m.answer.citation.published_at}` : ''}
                       </span>
                       <a className={styles.tsLink} href={m.answer.citation?.url} target="_blank" rel="noreferrer">
-                        Read source
+                        {sourceLinkLabel(m.answer.citation?.url)}
                       </a>
                     </div>
                   </div>
