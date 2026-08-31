@@ -204,6 +204,24 @@ all under one `speaker_org` value.
   backfill script would cover this if extended to `stance='accomplishment'`
   claims too, not done yet since it wasn't asked for.
 
+**Update 2026-08-31, same day**: the initial backfill run itself produced
+name-variant fragmentation — "Ian Liburd" and `Ian "Patches" Liburd`
+(also "Dr. Geoffrey Hanley" / "Dr. Geoffrey Ian Hanley", "Dr. Timothy
+Harris" / "Timothy Harris") landed as separate `speaker_name_at_time`
+values for the same real people, which would silently split the
+per-speaker filter for anyone affected. Normalized the existing rows
+directly, then fixed the root cause in both places a name gets assigned:
+`extract_from_video.py`'s `speaker_label` field description now
+explicitly requires the exact string from `KNOWN_FIGURES` (name portion
+only, before the em-dash — not the affiliation suffix) rather than
+whatever form the source text happens to use, and
+`backfill_speaker_name.py` got the identical instruction. `CHANNEL_HOSTS`
+also moved from being duplicated in the backfill script into
+`extract_from_video.py` as the single source of truth, and is now wired
+into the live extraction prompt too (previously only the backfill script
+had host-name context — a live-ingested Straight Talk claim could have
+produced yet another name variant with no correction path at all).
+
 ## Record-pairing relevance floor (decided 2026-08-31)
 
 Real bug, caught by the client reviewing live data: "the one with
@@ -219,13 +237,37 @@ actually was. Verified live: "Termination of...Terrence Crossman"
 Bank" — a *different bank entirely*, connected only by generic shared
 words ("bank", "national") — at `ts_rank` 0.103. A genuine match (the
 "2,400 NHC housing units" pairing) scored 0.13-0.16 for comparison.
-Fixed with `MIN_RELEVANT_RANK = 0.12`, exported from `oppositionWatch.ts`
-and reused by `retrieve.ts`'s related-record lookup so both code paths
-stay in sync — a coarse empirical floor (`ts_rank` isn't comparable in
-any absolute sense across different queries/categories), but the
-client's own instruction was to err toward showing nothing over a
-pairing that doesn't actually make sense, so conservative is correct
-here, not just convenient.
+
+**First fix (superseded same day): `MIN_RELEVANT_RANK = 0.12` threshold
+alone.** Not enough — a second bad pairing surfaced immediately after
+deploying it: "Crossman's compensation contract" paired with unrelated
+National Bank *asset-size* stats at rank 0.200, HIGHER than the genuine
+housing-units match, purely because both texts share the bank's full
+institutional name verbatim. `ts_rank` rewards exact phrase overlap
+regardless of whether two claims are about the same specific matter, so
+no single number can reliably separate "real match" from "same
+institution, different story" — proven by these two data points
+bracketing each other (bad=0.200 > good=0.158).
+
+**Actual fix: real relevance judgment, not a bigger number.**
+`findClosestRecord()` now uses `ts_rank` only as a cheap pre-filter
+(`MIN_RELEVANT_RANK` dropped to 0.05, just to skip zero-signal noise)
+and gates the final answer on `isGenuinelyRelevant()` — one Haiku call
+asking directly whether the candidate record addresses the same specific
+matter as the claim, not just the same institution/category. Fails
+closed on any error, missing key, or non-2xx response (no record shown),
+same "show nothing over a bad pairing" posture as before. Since this
+adds a real LLM call per opposition claim, `getOppositionPairs()` now
+caches its result for 10 minutes (previously explicitly uncached,
+"always live" per its own old comment) and runs the per-claim lookups in
+parallel rather than sequentially — a cold page load went from 47.6s to
+3.1s with today's ~60 opposition claims, verified live before and after
+both changes. `retrieve.ts`'s related-record lookup still shares the
+same lowered `MIN_RELEVANT_RANK` pre-filter but does NOT get its own
+`isGenuinelyRelevant()` call — verified live instead that the chatbot's
+own downstream model call already filters irrelevant "related" rows
+correctly on its own judgment (per rule 3's explicit instructions), so a
+second LLM call in that hot path wasn't worth the added chat latency.
 
 Same audit also found 6 confirmed same-video extraction duplicates (the
 Crossman claim itself was one of them — two near-identical extractions
@@ -235,6 +277,15 @@ only — not an exhaustive pass across every `similarity() > 0.4` hit,
 several of which turned out to be legitimate distinct claims (the same
 real-world fact independently reported across two different videos/
 sources, which is corroboration, not duplication) rather than bugs.
+
+**Terminology**: the client also flagged the UI label itself —
+"Closest documented record" implied a literal document; renamed to
+"Clarification" (and the parallel status pills to "Clarified" / "No
+clarification yet") across `/opposition-watch`, the claim detail page,
+and the chatbot's own internal language about the same concept, so the
+framing is consistent everywhere it appears — see
+`OppositionWatchClient.tsx`, `app/claim/[id]/page.tsx`,
+`chatbot_system_prompt.md`/`system-prompt.ts`.
 
 ## Containerization — decided, matches existing droplet setup
 
