@@ -12,8 +12,9 @@ const FALLBACK_QUESTIONS = [
 ];
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // real content changes rarely enough that regenerating every page load is wasted API spend
-const MOST_ASKED_LIMIT = 4;
-let cache: { questions: string[]; expiresAt: number } | null = null;
+const MOST_ASKED_POOL_SIZE = 10; // wide eligible pool to sample 1-2 from per load, not a fixed top-N
+const OPPOSITION_POOL_SIZE = 5;  // ditto, scoped smaller since opposition claims are rarer
+let poolCache: { mostAskedPool: string[]; oppositionPool: string[]; expiresAt: number } | null = null;
 
 export interface SampleClaim {
   title: string;
@@ -21,15 +22,25 @@ export interface SampleClaim {
   stance: string;
 }
 
-// Source (b) for getSuggestedQuestions: one live/recent Opposition Watch
-// claim. "Recent" = most recent by the date the event actually happened,
-// falling back to when it was added if that's unset.
-async function sampleRecentOppositionClaim(): Promise<SampleClaim[]> {
+function sampleN<T>(arr: T[], n: number): T[] {
+  const shuffled = [...arr];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, n);
+}
+
+// Pool for source (b) below: the N most recent Opposition Watch claims
+// (not just the single most recent), so getSuggestedQuestions has real
+// candidates to randomly pick from rather than always the same one.
+async function sampleRecentOppositionClaims(limit: number): Promise<SampleClaim[]> {
   const { rows } = await pool.query<SampleClaim>(
     `SELECT title, category, stance FROM claims
      WHERE review_status = 'approved' AND stance = 'opposition_statement'
      ORDER BY event_date DESC NULLS LAST, created_at DESC
-     LIMIT 1`
+     LIMIT $1`,
+    [limit]
   );
   return rows;
 }
@@ -112,45 +123,67 @@ export async function verifyPhrasedQuestions(phrased: string[], claims: SampleCl
   return verified;
 }
 
-// Starting suggestions, shown before any question is asked. Mixes two real
-// sources rather than picking one exclusively:
-//  (a) the most-asked questions in chat_queries that actually led to a
-//      found=true answer — shown verbatim, re-verified against retrieve()
-//      here since DB content can drift after a question was first logged
-//      (a claim could be unapproved later); anything that no longer
-//      retrieves is dropped, not kept on faith.
-//  (b) one live/recent Opposition Watch claim, phrased as a question and
-//      verified the same way every other generated suggestion is.
-// Falls back to a static list only if both sources are genuinely empty
-// (e.g. a brand-new deployment with no chat history yet) — never padded
-// with anything not actually traceable to (a) or (b).
-export async function getSuggestedQuestions(): Promise<string[]> {
+// Builds (and caches for CACHE_TTL_MS) the two ELIGIBLE POOLS that starting
+// suggestions sample from. This is the expensive part — DB queries, an LLM
+// phrasing call for the opposition pool, and per-item retrieve() verification
+// — so it's cached like the old single-answer cache was. The difference is
+// what's cached: a pool of several verified candidates, not one final
+// answer, so the random selection below can vary on every page load without
+// re-doing any of this work.
+async function getPools(): Promise<{ mostAskedPool: string[]; oppositionPool: string[] }> {
   const now = Date.now();
-  if (cache && cache.expiresAt > now) return cache.questions;
+  if (poolCache && poolCache.expiresAt > now) {
+    return { mostAskedPool: poolCache.mostAskedPool, oppositionPool: poolCache.oppositionPool };
+  }
 
-  const mostAsked = await getMostAskedFoundQuestions(MOST_ASKED_LIMIT).catch(() => [] as string[]);
-  const verifiedMostAsked: string[] = [];
-  for (const q of mostAsked) {
+  // (a) a wide pool of real past questions that led to a found=true answer,
+  // re-verified against retrieve() here since DB content can drift after a
+  // question was first logged (a claim could be unapproved later).
+  const mostAskedRaw = await getMostAskedFoundQuestions(MOST_ASKED_POOL_SIZE).catch(() => [] as string[]);
+  const mostAskedPool: string[] = [];
+  for (const q of mostAskedRaw) {
     try {
       const hits = await retrieve(q);
-      if (hits.length > 0) verifiedMostAsked.push(q);
+      if (hits.length > 0) mostAskedPool.push(q);
     } catch {
       // drop rather than risk shipping a starter that now leads nowhere
     }
   }
 
-  const oppositionClaims = await sampleRecentOppositionClaim().catch(() => [] as SampleClaim[]);
-  let oppositionQuestion: string[] = [];
+  // (b) a pool of recent Opposition Watch claims, phrased and verified the
+  // same way every other generated suggestion is.
+  const oppositionClaims = await sampleRecentOppositionClaims(OPPOSITION_POOL_SIZE).catch(() => [] as SampleClaim[]);
+  let oppositionPool: string[] = [];
   if (oppositionClaims.length > 0) {
     const phrased = (await phraseAsQuestions(oppositionClaims)) ?? oppositionClaims.map((c) => c.title);
-    oppositionQuestion = await verifyPhrasedQuestions(phrased, oppositionClaims);
+    oppositionPool = await verifyPhrasedQuestions(phrased, oppositionClaims);
   }
 
-  const combined = Array.from(new Set([...verifiedMostAsked, ...oppositionQuestion])).slice(0, 5);
-  const finalQuestions = combined.length > 0 ? combined : FALLBACK_QUESTIONS;
+  poolCache = { mostAskedPool, oppositionPool, expiresAt: now + CACHE_TTL_MS };
+  return { mostAskedPool, oppositionPool };
+}
 
-  cache = { questions: finalQuestions, expiresAt: now + CACHE_TTL_MS };
-  return finalQuestions;
+// Starting suggestions, shown before any question is asked. Mixes two real
+// sources rather than picking one exclusively, and — unlike the pools
+// above — samples fresh on every call so the same visitor reloading the
+// page, or two different visitors in the same 10-minute cache window, see
+// varying suggestions rather than one fixed set every time:
+//  (a) 1-2 questions randomly sampled from the most-asked-and-found pool.
+//  (b) 1 question randomly sampled from the recent-opposition-claim pool.
+// Falls back to a static list only if both pools are genuinely empty
+// (e.g. a brand-new deployment with no chat history yet) — never padded
+// with anything not actually traceable to (a) or (b).
+export async function getSuggestedQuestions(): Promise<string[]> {
+  const { mostAskedPool, oppositionPool } = await getPools();
+
+  if (mostAskedPool.length === 0 && oppositionPool.length === 0) return FALLBACK_QUESTIONS;
+
+  const mostAskedCount = mostAskedPool.length >= 2 ? (Math.random() < 0.5 ? 1 : 2) : mostAskedPool.length;
+  const pickedMostAsked = sampleN(mostAskedPool, mostAskedCount);
+  const pickedOpposition = sampleN(oppositionPool, Math.min(1, oppositionPool.length));
+
+  const combined = Array.from(new Set([...pickedMostAsked, ...pickedOpposition])).slice(0, 5);
+  return combined.length > 0 ? combined : FALLBACK_QUESTIONS;
 }
 
 // Follow-up suggestions shown after an answered question: 2-3 real
