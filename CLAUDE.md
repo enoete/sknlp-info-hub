@@ -648,14 +648,31 @@ Root-cause fix in `extract_from_video.py` (not just a data patch):
   restarted from the fixed code — anything they'd already written before
   the kill was left untouched (already verified correct in the audit
   above); anything not yet extracted gets the fixed prompt.
-- Not yet done: a matching audit of the opposition-side sources (Talk
-  SKN, Straight Talk, PLP) ingested before this fix — the audit above
-  only covered ZIZ (where the bug was actually found, since ZIZ is the
-  only source with mixed government+opposition speakers in one video).
-  Straight Talk/Talk SKN are pure opposition commentary so case 1 is
-  unlikely there, but case 2 (crediting a previous administration) is
-  plausible on any channel discussing Team Unity-era history and hasn't
-  been specifically checked yet.
+- **Update 2026-08-31, same day**: the opposition-side audit was done.
+  Confirmed case 2 (previous administration's own record, wrong party
+  entirely) is real on these sources too, worse than expected — PLP's
+  own channel is naturally full of it (a PLP convention/press event is
+  Timothy Harris crediting "the PLP/Team Unity administration" for its
+  own record; 6 of 6 accomplishment-tagged PLP claims were this pattern)
+  and Straight Talk had 2 more (one explicitly Team Unity-attributed SIDF
+  funding claim, one a genuinely out-of-scope 2011 National Energy Policy
+  claim — predates even Team Unity, caught by the base "Scope window"
+  rule above, not just the stance rule). Also re-examined the two ZIZ
+  claims left alone in the first pass ("Island Main Road Resurfacing
+  Project", "Defense of Team Unity Good Governance Legislative Record",
+  both Timothy Harris crediting Team Unity's own record) against the
+  now-explicit standard and rejected those too, for consistency — they'd
+  been left as opposition_statement on a looser first-pass read before
+  the "praising your own prior administration is out of scope entirely,
+  not just criticism of it" rule was written down explicitly. Case 1 also
+  recurred once outside ZIZ: PM Drew's own $400M geothermal cost estimate
+  from a press conference, quoted by Straight Talk, was tagged
+  opposition_statement purely because the surrounding episode was
+  critical — fixed the same way (stance -> accomplishment, back to
+  pending_review). Total this round: 10 claims rejected (wrong
+  administration/out of scope), 1 reclassified. Talk SKN's
+  accomplishment-tagged claims were all checked and are correctly
+  current-government content — no case 2 hits there specifically.
 - Separately noticed, not yet fixed: two of the corrected claims had a
   wrong `transcript_segments.speaker_title_at_time` (PM Drew's segment
   showing "Attorney General" / "Speaker of the National Assembly")  —
