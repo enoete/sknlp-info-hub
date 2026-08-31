@@ -151,6 +151,91 @@ enrollment/matching loop described above. Concretely:
   future unrelated caller against that one recording — a real identity
   mix-up, not just a cosmetic labeling gap.
 
+## Named opposition speaker filtering (decided 2026-08-31)
+
+Prompted directly: "the actual literal person who said it... Timothy
+Harris, or Patches or Kyle, we need to be that granular." `speaker_org`
+(the channel — Straight Talk, Talk SKN, PLP, ZIZOnline) is the only
+speaker field that was reliably populated, and it's too coarse — a
+single Straight Talk episode features Ian Liburd's own commentary, a
+played clip of a government minister, and sometimes an anonymous caller,
+all under one `speaker_org` value.
+
+- `transcript_segments.speaker_name_at_time TEXT` — the actual named
+  individual, captured per claim (not per video). Parallel to the
+  existing `speaker_title_at_time` (which holds the *role*, e.g. "Member
+  for Nevis 9"): same historical-attribution posture, same table, same
+  "captured at ingestion time, never derived live" safety property.
+- `segment_utils.py`'s `compute_segment_window()` now also borrows the
+  enclosing raw segment's `speaker_label` (Gemini already resolves this
+  during extraction — see the "Speaker identification" sections above)
+  into `speaker_name_at_time`, filtered through a new `_is_real_name()`
+  check that excludes generic `"Speaker N"` placeholders and the literal
+  `"Caller"` label — a caller is never named, by design (see "Call-in
+  callers" above), and a genuinely-unidentified speaker should stay
+  `NULL`, not get a fake placeholder value that would corrupt name-based
+  filtering by grouping unrelated unidentified people together.
+- **Backfill for the ~318 claims ingested before this column existed**:
+  `ingestion/backfill_speaker_name.py`, same batched-Gemini-classification
+  pattern as `backfill_accomplishment_type.py` — passes each claim's
+  title/summary/role/source context plus the full `KNOWN_FIGURES` list
+  and the two channel-host mappings (Kyle Flanders = Talk SKN, Ian
+  "Patches" Liburd = Straight Talk), asks for the actual named speaker or
+  the literal sentinel `"UNKNOWN"` (never a guess). Skips any segment
+  already marked `speaker_title_at_time = 'Caller'` outright. Run
+  2026-08-31: **292 of 318 resolved** to a real name (the rest correctly
+  left `NULL`) — spot-checked against every figure named elsewhere in
+  this file, no misattributions found. Also surfaced several real
+  figures not previously tracked anywhere in this project (Delonte
+  Lewis, Troy Hendrickson, Valma Caesar, Police Commissioner James
+  Sutton, Cromwell Henry) — worth adding to `KNOWN_FIGURES` if they keep
+  recurring.
+- `app/lib/oppositionWatch.ts`'s `OppositionPair.named_speaker` surfaces
+  this (via a subquery on `claim_transcript_segments`/`transcript_segments`,
+  same pattern as the existing `source_start_seconds` deep-link lookup).
+  `OppositionWatchClient.tsx`'s speaker filter uses
+  `named_speaker ?? speaker_org` — falls back to the channel only for
+  the claims that genuinely have no resolved individual yet, so nothing
+  silently disappears from the filter list mid-backfill.
+- Known gap, not hidden: this only covers opposition-side sources so
+  far (where the request was scoped). Government-side ZIZ claims still
+  only have `speaker_title_at_time` (e.g. "Prime Minister & Minister of
+  Finance") without necessarily a resolved name on older rows — same
+  backfill script would cover this if extended to `stance='accomplishment'`
+  claims too, not done yet since it wasn't asked for.
+
+## Record-pairing relevance floor (decided 2026-08-31)
+
+Real bug, caught by the client reviewing live data: "the one with
+Terrence Crossman being terminated does not have a contextual
+clarification... audit this and make sure it makes sense, and if there
+isn't any clarification, then just leave it at that till there is one."
+`oppositionWatch.ts`'s `findClosestRecord()` — used both by the public
+`/opposition-watch` page and by `retrieve.ts`'s chatbot cross-reference
+(see "Opposition side — sequencing" above) — always returned the
+top-ranked same-category claim with no floor on how weak that match
+actually was. Verified live: "Termination of...Terrence Crossman"
+(category Governance) was paired with "Unaccounted Cash at Development
+Bank" — a *different bank entirely*, connected only by generic shared
+words ("bank", "national") — at `ts_rank` 0.103. A genuine match (the
+"2,400 NHC housing units" pairing) scored 0.13-0.16 for comparison.
+Fixed with `MIN_RELEVANT_RANK = 0.12`, exported from `oppositionWatch.ts`
+and reused by `retrieve.ts`'s related-record lookup so both code paths
+stay in sync — a coarse empirical floor (`ts_rank` isn't comparable in
+any absolute sense across different queries/categories), but the
+client's own instruction was to err toward showing nothing over a
+pairing that doesn't actually make sense, so conservative is correct
+here, not just convenient.
+
+Same audit also found 6 confirmed same-video extraction duplicates (the
+Crossman claim itself was one of them — two near-identical extractions
+of the same fact from the same video) via a `pg_trgm` title-similarity
+sweep, rejected. Scoped to the clearest, highest-confidence candidates
+only — not an exhaustive pass across every `similarity() > 0.4` hit,
+several of which turned out to be legitimate distinct claims (the same
+real-world fact independently reported across two different videos/
+sources, which is corroboration, not duplication) rather than bugs.
+
 ## Containerization — decided, matches existing droplet setup
 
 The rest of the droplet's services run in containers; this app should too,
@@ -572,6 +657,7 @@ built, not from memory. Two valid states only:
 | `idx_claims_event_date_category` (replaces `idx_claims_year_category`) | ✅ Migrated | 2026-08-31 |
 | `claims.accomplishment_type` (sub-classification within `stance='accomplishment'` — see "Accomplishment sub-typing" below) | ✅ Migrated | 2026-08-31 |
 | `claims.completes_claim_id` (self-ref, links a later claim to the earlier initiative/decision it completes — see "Initiative follow-through tracking" below) | ✅ Migrated | 2026-08-31 |
+| `transcript_segments.speaker_name_at_time` (the actual named individual per claim, distinct from `speaker_title_at_time`'s role — see "Named opposition speaker filtering" below) | ✅ Migrated | 2026-08-31 |
 
 One-time full audit completed 2026-08-31, prompted by the `chat_queries`
 gap: every table and column in `schema.sql` cross-checked
