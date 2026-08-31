@@ -23,6 +23,13 @@ export interface OppositionPair {
   speaker_org: string;
   origin_url: string;
   published_at: string | null;
+  // Derived from COALESCE(event_date, published_at), same fallback the
+  // page already displays with — event_date is human-confirmed-only and
+  // usually still NULL for opposition claims (see schema.sql), so a
+  // year filter keyed on event_date alone would leave most claims
+  // unbucketed. The video's own published_at is reliably known for
+  // every scraped source, so it's the honest "when" for filtering here.
+  year: number | null;
   record: OppositionRecord | null;
 }
 
@@ -87,6 +94,7 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
     speaker_org: string;
     origin_url: string;
     published_at: string | null;
+    year: number | null;
     source_start_seconds: number | null;
   }>(
     `SELECT
@@ -94,6 +102,7 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org,
        s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
+       EXTRACT(YEAR FROM coalesce(c.event_date, s.published_at))::INT AS year,
        (SELECT ts.start_seconds
         FROM claim_transcript_segments cts
         JOIN transcript_segments ts ON ts.id = cts.segment_id

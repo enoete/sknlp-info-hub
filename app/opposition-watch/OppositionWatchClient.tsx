@@ -12,15 +12,34 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
     () => Array.from(new Set(pairs.map((p) => p.category).filter((c): c is string => !!c))).sort((a, b) => a.localeCompare(b)),
     [pairs]
   );
+  // "Who said it" — speaker_org is the reliably-populated field (a named
+  // individual speaker_name is almost always null for these sources, see
+  // CLAUDE.md); for a third-party channel like Straight Talk or Talk SKN
+  // this is effectively the commentator, for PLP it's the party's own
+  // channel, for ZIZ-sourced National Assembly footage it's the source
+  // rather than the individual MP speaking — a real gap, not pretending
+  // otherwise, but still meaningfully narrows "who" for a viewer today.
+  const speakers = useMemo(
+    () => Array.from(new Set(pairs.map((p) => p.speaker_org).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [pairs]
+  );
+  const years = useMemo(
+    () => Array.from(new Set(pairs.map((p) => p.year).filter((y): y is number => y != null))).sort((a, b) => b - a),
+    [pairs]
+  );
 
   const [statusFilter, setStatusFilter] = useState<string>(ALL);
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL);
+  const [speakerFilter, setSpeakerFilter] = useState<string>(ALL);
+  const [yearFilter, setYearFilter] = useState<string>(ALL);
 
   const filtered = pairs.filter((p) => {
     const status = p.record ? 'documented' : 'undocumented';
     return (
       (statusFilter === ALL || status === statusFilter) &&
-      (categoryFilter === ALL || p.category === categoryFilter)
+      (categoryFilter === ALL || p.category === categoryFilter) &&
+      (speakerFilter === ALL || p.speaker_org === speakerFilter) &&
+      (yearFilter === ALL || String(p.year) === yearFilter)
     );
   });
 
@@ -66,6 +85,38 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
             </span>
           );
         })}
+        <div className={styles.filterSep} />
+        <span
+          className={`${styles.pill} ${speakerFilter === ALL ? styles.pillActive : ''}`}
+          onClick={() => setSpeakerFilter(ALL)}
+        >
+          All sources
+        </span>
+        {speakers.map((sp) => (
+          <span
+            key={sp}
+            className={`${styles.pill} ${speakerFilter === sp ? styles.pillActive : ''}`}
+            onClick={() => setSpeakerFilter(sp)}
+          >
+            {sp}
+          </span>
+        ))}
+        <div className={styles.filterSep} />
+        <span
+          className={`${styles.pill} ${yearFilter === ALL ? styles.pillActive : ''}`}
+          onClick={() => setYearFilter(ALL)}
+        >
+          All years
+        </span>
+        {years.map((y) => (
+          <span
+            key={y}
+            className={`${styles.pill} ${yearFilter === String(y) ? styles.pillActive : ''}`}
+            onClick={() => setYearFilter(String(y))}
+          >
+            {y}
+          </span>
+        ))}
       </div>
 
       {filtered.length === 0 ? (

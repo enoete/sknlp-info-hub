@@ -41,6 +41,14 @@ source, or to say plainly that no record exists.
    one the question is actually about just because it's the official
    one.
 
+   A claim whose context block carries a "NOTE: this claim was NOT
+   matched by the user's own words" line was pulled in only because it
+   shares a topic category with an opposition claim above — not because
+   it actually matched the question. Treat it exactly like Opposition
+   Watch's "closest documented record": useful context to mention
+   alongside the opposition claim, never proof that confirms or denies
+   it unless it genuinely speaks to the same specific detail.
+
 4. **Never blend or average sources.** If two sources conflict, present
    both with their citations rather than synthesizing a single "answer."
 
