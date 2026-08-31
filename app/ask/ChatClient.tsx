@@ -31,6 +31,8 @@ interface ChatMessage {
   errorText?: string;
 }
 
+const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
 export default function ChatClient({ suggestions }: { suggestions: string[] }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -61,8 +63,24 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ question })
       });
-      const data = await res.json();
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        // Not our API's doing — e.g. nginx's own HTML error page during a
+        // brief upstream outage (502/504), which isn't JSON at all. A raw
+        // "Unexpected token '<'" means nothing to a real visitor; log it
+        // for debugging and show a plain, generic message instead.
+        console.error('Failed to parse /api/ask response as JSON:', parseErr);
+        setMessages((m) => [...m, { role: 'bot', errorText: GENERIC_ERROR }]);
+        return;
+      }
+
       if (!res.ok) {
+        // A real, structured error from our own API (rate limit, missing
+        // key, etc.) — data.error is already a deliberate, human-readable
+        // message, safe to show as-is.
         setMessages((m) => [...m, { role: 'bot', errorText: data.error || `Request failed (${res.status})` }]);
       } else {
         setMessages((m) => [...m, { role: 'bot', answer: data }]);
@@ -71,7 +89,10 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
         }
       }
     } catch (err) {
-      setMessages((m) => [...m, { role: 'bot', errorText: String(err) }]);
+      // Network-level failure (connection dropped, DNS, etc.) — same
+      // reasoning as above: log the real cause, never show it raw.
+      console.error('Network error calling /api/ask:', err);
+      setMessages((m) => [...m, { role: 'bot', errorText: GENERIC_ERROR }]);
     } finally {
       setLoading(false);
     }
