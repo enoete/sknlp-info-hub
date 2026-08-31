@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './source-manager.module.css';
+import Combobox from '@/app/components/Combobox';
 import {
   ADD_SOURCE_TYPE_OPTIONS,
   SOURCE_TYPE_OPTIONS,
@@ -20,6 +21,7 @@ export default function AddSourceForm({ existingLabels }: { existingLabels: stri
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   const field = CONTENT_FIELD_CONFIG[type];
+  const labelOptions = useMemo(() => existingLabels.map((l) => ({ value: l, label: l })), [existingLabels]);
 
   function handleTypeChange(next: string) {
     setType(next);
@@ -72,44 +74,37 @@ export default function AddSourceForm({ existingLabels }: { existingLabels: stri
       <div className={styles.row}>
         <div>
           <label className={styles.formLabel} htmlFor="type">Type</label>
-          <select id="type" className={styles.select} value={type} onChange={(e) => handleTypeChange(e.target.value)}>
-            {ADD_SOURCE_TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+          <Combobox
+            id="type"
+            mode="strict"
+            options={ADD_SOURCE_TYPE_OPTIONS}
+            value={type}
+            onChange={handleTypeChange}
+          />
         </div>
         <div>
           <label className={styles.formLabel} htmlFor="sourceType">Classification</label>
-          <select
+          <Combobox
             id="sourceType"
-            className={styles.select}
+            mode="strict"
+            options={SOURCE_TYPE_OPTIONS}
             value={sourceType}
-            onChange={(e) => setSourceType(e.target.value)}
-          >
-            {SOURCE_TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+            onChange={setSourceType}
+          />
         </div>
       </div>
 
       <div className={styles.row}>
         <div>
           <label className={styles.formLabel} htmlFor="label">Label</label>
-          <input
+          <Combobox
             id="label"
-            className={styles.textInput}
-            list="existing-labels"
-            placeholder="e.g. SKNLP official YouTube"
+            mode="free-text"
+            options={labelOptions}
             value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            autoComplete="off"
+            onChange={setLabel}
+            placeholder="e.g. SKNLP official YouTube"
           />
-          <datalist id="existing-labels">
-            {existingLabels.map((l) => (
-              <option key={l} value={l} />
-            ))}
-          </datalist>
         </div>
         <div>
           <label className={styles.formLabel} htmlFor="content">{field.label}</label>
