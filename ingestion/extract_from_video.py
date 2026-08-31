@@ -98,21 +98,21 @@ RESPONSE_SCHEMA = {
                 "properties": {
                     "speaker_label": {
                         "type": "string",
-                        "description": "Named figure if identifiable (from on-screen text, introduction, or clear context), otherwise a generic label like 'Speaker 1'."
+                        "description": "Named figure if identifiable (from on-screen text, introduction, or clear context), otherwise a generic label like 'Speaker 1'. For a caller phoning into a call-in program (e.g. Straight Talk), always use the literal generic label 'Caller' — never transcribe or guess a name/surname even if the host uses one on air; callers are deliberately never named in this system."
                     },
                     "speaker_confidence": {
                         "type": "string",
                         "enum": ["high", "medium", "low"],
-                        "description": "How confident the identification is. 'high' only if driven by a clear signal (see identification_signal)."
+                        "description": "How confident the identification is. 'high' only if driven by a clear signal (see identification_signal). A phone-in caller should be 'high' — the call-in format itself is the confirming signal, not a lower confidence just because no name is given."
                     },
                     "identification_signal": {
                         "type": "string",
-                        "enum": ["video_title", "channel_identity", "on_screen_text", "spoken_introduction", "self_identified", "voice_only_no_context", "none"],
-                        "description": "Which signal actually drove this identification. Be honest — if you're inferring from topic/familiarity rather than an explicit cue, use 'voice_only_no_context' or 'none', not one of the explicit-signal values."
+                        "enum": ["video_title", "channel_identity", "on_screen_text", "spoken_introduction", "self_identified", "caller_phoned_in", "voice_only_no_context", "none"],
+                        "description": "Which signal actually drove this identification. Be honest — if you're inferring from topic/familiarity rather than an explicit cue, use 'voice_only_no_context' or 'none', not one of the explicit-signal values. Use 'caller_phoned_in' specifically for a member of the public calling into a talk program — this is a distinct, deliberate case, not a failed identification."
                     },
                     "role_as_stated": {
                         "type": "string",
-                        "description": "The speaker's role/title AS STATED OR SHOWN in this video, not assumed from outside knowledge. Empty string if not stated."
+                        "description": "The speaker's role/title AS STATED OR SHOWN in this video, not assumed from outside knowledge. Empty string if not stated. For a phone-in caller, use 'Caller' here too, so this consistent label is what gets stored as the historical speaker_title_at_time for the claim."
                     },
                     "start_timestamp": {"type": "string", "description": "MM:SS"},
                     "end_timestamp": {"type": "string", "description": "MM:SS"},
@@ -242,6 +242,16 @@ one or more of: the video title, the channel, an on-screen name/lower
 third, a spoken introduction, or the speaker naming themselves — not from
 assuming based on topic or general familiarity):
 {figures_list}
+
+If this is a call-in program (e.g. Straight Talk, or any show where members
+of the public phone in to speak on air): treat every caller as a distinct
+speaker turn worth capturing — their statements matter and should be
+extracted into candidate_claims like anyone else's — but never attempt to
+identify or name a caller, even if the host uses a first name on air. Use
+the exact literal label 'Caller' for both speaker_label and role_as_stated,
+and identification_signal 'caller_phoned_in'. This is intentional and by
+design, not a missed identification — do not lower speaker_confidence just
+because no name is captured.
 
 This video is expected to be primarily {source_type} content.
 Likely categories for claims: {category_hint or ', '.join(CATEGORIES)}.

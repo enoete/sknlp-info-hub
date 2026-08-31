@@ -115,6 +115,42 @@ and three actions — confirm / it's someone else (pick or add) / not sure.
 This did not exist in the original mockup — add it as a queue-item variant
 alongside the claim-review cards already there.
 
+## Call-in callers — captured and quoted, never named or enrolled
+
+Decision (2026-08-31), prompted by adding Straight Talk (see "Fourth
+source category" below): Straight Talk and shows like it take live phone
+calls from members of the public, and those callers matter — per the
+person who commissioned this project, "they deserve to be heard" — so
+their statements should be extracted into `candidate_claims` exactly like
+a named figure's, not skipped just because there's no name attached.
+
+**But explicitly no need to capture names**, and — more important than
+the UI label — a caller must never enter the voiceprint
+enrollment/matching loop described above. Concretely:
+- `extract_from_video.py`'s prompt and `RESPONSE_SCHEMA` now instruct
+  Gemini to label any phone-in caller with the literal generic
+  `speaker_label`/`role_as_stated` of `'Caller'` and
+  `identification_signal = 'caller_phoned_in'` — a new, distinct enum
+  value, not `'none'`/`'voice_only_no_context'`, since this is a
+  deliberate non-identification, not a failed one. `speaker_confidence`
+  should still be `'high'` for a caller — the call-in format itself is
+  the confirming signal.
+- That `role_as_stated` flows straight through into
+  `transcript_segments.speaker_title_at_time` via the existing
+  `compute_segment_window()` mechanism (`ingestion/segment_utils.py`) —
+  no separate code path needed, it's the same historical-attribution
+  field already used for political titles (see "Political volatility"
+  above), just holding `'Caller'` instead of a name/title.
+- `identify_speaker.py`'s `resolve_speaker_identity()` early-exits on
+  `context_signal == CALLER_SIGNAL` and returns a `'caller'` decision
+  with no enrollment and no voice-matching attempt at all. This matters
+  even though the voice pipeline isn't wired to live ingestion yet:
+  without this guard, the fusion logic would treat the shared generic
+  label `'Caller'` as "a person not yet enrolled," bootstrap a voiceprint
+  from the first caller's clip, and then silently start matching every
+  future unrelated caller against that one recording — a real identity
+  mix-up, not just a cosmetic labeling gap.
+
 ## Containerization — decided, matches existing droplet setup
 
 The rest of the droplet's services run in containers; this app should too,

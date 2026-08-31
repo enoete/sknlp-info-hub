@@ -41,6 +41,13 @@ AUTO_ASSIGN_THRESHOLD = 80   # >= this: assign automatically, no human check nee
 CONFIRM_THRESHOLD = 45       # >= this but < auto-assign: ask a human to confirm
 # below CONFIRM_THRESHOLD: leave as unknown_speaker, no suggestion shown
 
+# extract_from_video.py's identification_signal value for a member of the
+# public phoning into a call-in program (e.g. Straight Talk). These
+# speakers are captured and quoted like anyone else, but deliberately
+# never named and never enrolled as a tracked identity -- see
+# resolve_speaker_identity()'s early-exit below.
+CALLER_SIGNAL = "caller_phoned_in"
+
 
 def _headers():
     key = os.environ.get("PYANNOTE_API_KEY")
@@ -201,8 +208,20 @@ def resolve_speaker_identity(context_signal: str, context_confidence: str, conte
         than silently trusting a single unconfirmed signal forever
       - needs_confirmation: signals disagree, or neither is strong enough
         alone — surface both pieces of evidence to the human
+      - caller: an anonymous call-in speaker (see CALLER_SIGNAL) — labeled
+        and quoted, but never enrolled or voice-matched against anyone
       - unknown: nothing usable
     """
+    if context_signal == CALLER_SIGNAL:
+        # A phone-in caller is intentionally never named or tracked as a
+        # persistent identity -- enrolling a voiceprint under the shared
+        # generic label 'Caller' would silently conflate every caller who
+        # ever phones in as "the same person" for future voice matching,
+        # which is both wrong and exactly the kind of un-requested identity
+        # tracking this decision explicitly rules out. No enrollment, no
+        # voice-matching attempt at all; just pass the label through.
+        return {"decision": "caller", "speaker_label": "Caller", "evidence": CALLER_SIGNAL, "score": None}
+
     has_context = context_signal not in (None, "none", "voice_only_no_context") and context_confidence == "high"
     already_enrolled = context_name in enrolled_voiceprints if context_name else False
 
