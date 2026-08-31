@@ -110,6 +110,40 @@
   text-decoration: underline;
   color: var(--muted);
 }
+.editLink {
+  text-decoration: underline;
+  color: var(--muted);
+  cursor: pointer;
+}
+.editLink:hover {
+  color: var(--red);
+}
+.sharedNote {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.editBlock {
+  background: var(--paper-2);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 6px 0 10px;
+}
+.editInput {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-family: 'IBM Plex Mono', monospace;
+  margin-bottom: 8px;
+}
+.editActions {
+  display: flex;
+  gap: 8px;
+}
 
 .suggestBlock {
   background: var(--paper-2);

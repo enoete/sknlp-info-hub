@@ -28,6 +28,18 @@ export interface SampleClaim {
   stance: string;
 }
 
+// Last-resort fallback when an LLM-phrased question either wasn't produced
+// (phraseAsQuestions failed/no API key) or didn't verify against retrieve()
+// — used to show the claim's own bare TITLE ("Minimum wage increased EC$360
+// → EC$500/week"), which reads as an assertion, not something a citizen
+// would type into a chat box. Wrapping it keeps the guarantee that made the
+// bare title a safe fallback in the first place: every lexeme in `title` is
+// still present, so anything that matched via retrieve() before still does.
+function titleAsQuestion(title: string): string {
+  const body = title.replace(/[.?!]+$/, '');
+  return `Is it true that ${body.charAt(0).toLowerCase()}${body.slice(1)}?`;
+}
+
 function sampleN<T>(arr: T[], n: number): T[] {
   const shuffled = [...arr];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -127,19 +139,20 @@ export async function phraseAsQuestions(claims: SampleClaim[]): Promise<string[]
 
 // Verifies each phrased question through the exact same retrieval path
 // /api/ask uses — if an LLM paraphrase happens to drop the keyword that
-// would've matched, that slot falls back to the claim's own title
-// (guaranteed to match itself) rather than shipping a "suggested" question
-// that would ironically return "no record" when clicked. Shared by the
-// starting-suggestions path below and the per-answer follow-up path
-// (getFollowUpQuestions) — same reliability bar in both places.
+// would've matched, that slot falls back to titleAsQuestion(claim's title)
+// (guaranteed to match, since every lexeme of the title is still present)
+// rather than shipping a "suggested" question that would ironically return
+// "no record" when clicked. Shared by the starting-suggestions path below
+// and the per-answer follow-up path (getFollowUpQuestions) — same
+// reliability bar in both places.
 export async function verifyPhrasedQuestions(phrased: string[], claims: SampleClaim[]): Promise<string[]> {
   const verified: string[] = [];
   for (let i = 0; i < phrased.length; i++) {
     try {
       const hits = await retrieve(phrased[i]);
-      verified.push(hits.length > 0 ? phrased[i] : claims[i].title);
+      verified.push(hits.length > 0 ? phrased[i] : titleAsQuestion(claims[i].title));
     } catch {
-      verified.push(claims[i].title);
+      verified.push(titleAsQuestion(claims[i].title));
     }
   }
   return verified;
@@ -185,7 +198,7 @@ async function getPools(): Promise<{
   const oppositionClaims = await sampleRecentOppositionClaims(OPPOSITION_POOL_SIZE).catch(() => [] as SampleClaim[]);
   let oppositionPool: string[] = [];
   if (oppositionClaims.length > 0) {
-    const phrased = (await phraseAsQuestions(oppositionClaims)) ?? oppositionClaims.map((c) => c.title);
+    const phrased = (await phraseAsQuestions(oppositionClaims)) ?? oppositionClaims.map((c) => titleAsQuestion(c.title));
     oppositionPool = await verifyPhrasedQuestions(phrased, oppositionClaims);
   }
 
@@ -200,7 +213,7 @@ async function getPools(): Promise<{
   );
   let recentAccomplishmentPool: string[] = [];
   if (recentAccomplishmentClaims.length > 0) {
-    const phrased = (await phraseAsQuestions(recentAccomplishmentClaims)) ?? recentAccomplishmentClaims.map((c) => c.title);
+    const phrased = (await phraseAsQuestions(recentAccomplishmentClaims)) ?? recentAccomplishmentClaims.map((c) => titleAsQuestion(c.title));
     recentAccomplishmentPool = await verifyPhrasedQuestions(phrased, recentAccomplishmentClaims);
   }
 
@@ -256,6 +269,6 @@ export async function getFollowUpQuestions(excludeClaimId: string, category: str
   );
   if (claims.length === 0) return [];
 
-  const phrased = (await phraseAsQuestions(claims)) ?? claims.map((c) => c.title);
+  const phrased = (await phraseAsQuestions(claims)) ?? claims.map((c) => titleAsQuestion(c.title));
   return verifyPhrasedQuestions(phrased, claims);
 }

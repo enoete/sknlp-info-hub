@@ -1,5 +1,6 @@
 import { pool } from './db';
 import { withTimestamp } from './youtube';
+import { ValidationError } from './sourceManager';
 
 export interface ReviewQueueClaim {
   id: string;
@@ -15,11 +16,18 @@ export interface ReviewQueueClaim {
   citizen_impact_suggested: string | null;
   event_date: string | null;
   event_date_suggested: string | null;
+  source_id: string;
   source_title: string;
   origin_url: string;
   speaker_org: string;
   source_type: string;
   channel: string;
+  // How many OTHER claims (including this one) are linked to the same
+  // sources row — several claims can legitimately share one source (e.g.
+  // one campaign graphic documenting 3-4 accomplishments at once), so
+  // editing this source's URL updates all of them at once. Shown in the
+  // edit UI so that isn't a surprise.
+  source_claim_count: number;
   created_at: string;
 }
 
@@ -40,7 +48,8 @@ export async function getReviewQueueClaims(): Promise<ReviewQueueClaim[]> {
          c.citizen_impact_suggested,
          to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
          to_char(c.event_date_suggested, 'YYYY-MM-DD') AS event_date_suggested,
-         s.title AS source_title, s.origin_url, s.speaker_org, s.source_type, s.channel,
+         s.id AS source_id, s.title AS source_title, s.origin_url, s.speaker_org, s.source_type, s.channel,
+         (SELECT count(*) FROM claim_sources cs2 WHERE cs2.source_id = s.id)::int AS source_claim_count,
          c.created_at,
          (SELECT ts.start_seconds
           FROM claim_transcript_segments cts
@@ -131,4 +140,33 @@ export async function unapproveClaim(id: string): Promise<{ id: string; review_s
     [id]
   );
   return rows[0] ?? null;
+}
+
+// Lets an admin replace a placeholder/generic source URL (e.g. a seed-data
+// stand-in like facebook.com/sknismedia/photos) with the real, specific
+// permalink once it's tracked down — without needing to unapprove and
+// re-approve the claim(s) that cite it. Updates the sources row directly,
+// so every claim linked to this same source (there can be several — see
+// ReviewQueueClaim.source_claim_count) picks up the new URL at once; that's
+// correct when they genuinely came from the same post, not a bug.
+export async function updateSourceUrl(
+  sourceId: string,
+  originUrl: string
+): Promise<{ source_id: string; origin_url: string; claims_updated: number } | null> {
+  const trimmed = originUrl.trim();
+  if (!trimmed) throw new ValidationError('URL is required');
+  if (!/^https?:\/\/\S+$/i.test(trimmed)) throw new ValidationError('Must be a real http(s) URL');
+
+  const { rows } = await pool.query<{ id: string; origin_url: string }>(
+    `UPDATE sources SET origin_url = $2 WHERE id = $1 RETURNING id, origin_url`,
+    [sourceId, trimmed]
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  const { rows: countRows } = await pool.query<{ count: string }>(
+    `SELECT count(*) FROM claim_sources WHERE source_id = $1`,
+    [sourceId]
+  );
+  return { source_id: row.id, origin_url: row.origin_url, claims_updated: Number(countRows[0].count) };
 }

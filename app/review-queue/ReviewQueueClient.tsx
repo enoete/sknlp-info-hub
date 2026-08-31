@@ -45,6 +45,52 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
   const [decided, setDecided] = useState<Record<string, Decision>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
 
+  // Source-URL editing — keyed by source_id (not claim id), since several
+  // claims can share one source row and editing it updates all of them at
+  // once (see ReviewQueueClaim.source_claim_count).
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEditingSource(c: ReviewQueueClaim) {
+    setEditingSourceId(c.source_id);
+    setEditValue(c.origin_url);
+    setEditError(null);
+  }
+
+  function cancelEditingSource() {
+    setEditingSourceId(null);
+    setEditValue('');
+    setEditError(null);
+  }
+
+  async function saveSourceUrl(sourceId: string) {
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/sources/${sourceId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ origin_url: editValue })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditError(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      // Every claim linked to this source picks up the new URL — not just
+      // the one card the edit was opened from.
+      setClaims((cs) => cs.map((c) => (c.source_id === sourceId ? { ...c, origin_url: data.origin_url } : c)));
+      setEditingSourceId(null);
+      setEditValue('');
+    } catch (err) {
+      setEditError(String(err));
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   // Only ever shows channels actually present in the data (same rule as
   // Dashboard's category pills / Opposition Watch's sector pills) — never
   // a static list of every enum value regardless of whether anything uses it.
@@ -187,8 +233,49 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
                 {c.source_type} — {c.speaker_org} — {c.source_title} &middot;{' '}
                 <a href={c.origin_url} target="_blank" rel="noreferrer">
                   view source
-                </a>
+                </a>{' '}
+                &middot;{' '}
+                <span className={styles.editLink} onClick={() => startEditingSource(c)}>
+                  edit source URL
+                </span>
+                {c.source_claim_count > 1 && (
+                  <span className={styles.sharedNote}>
+                    {' '}
+                    (shared by {c.source_claim_count} claims)
+                  </span>
+                )}
               </div>
+
+              {editingSourceId === c.source_id && (
+                <div className={styles.editBlock}>
+                  <input
+                    className={styles.editInput}
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder="https://facebook.com/..."
+                    disabled={editSaving}
+                  />
+                  <div className={styles.editActions}>
+                    <button
+                      className={`${styles.btn} ${styles.btnApprove}`}
+                      disabled={editSaving}
+                      onClick={() => saveSourceUrl(c.source_id)}
+                    >
+                      {editSaving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button className={`${styles.btn} ${styles.btnReject}`} disabled={editSaving} onClick={cancelEditingSource}>
+                      Cancel
+                    </button>
+                  </div>
+                  {c.source_claim_count > 1 && (
+                    <div className={styles.suggestNote}>
+                      This source is linked to {c.source_claim_count} claims — saving updates the URL for all of them,
+                      since they came from the same post.
+                    </div>
+                  )}
+                  {editError && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{editError}</div>}
+                </div>
+              )}
 
               {c.review_status === 'approved' ? (
                 <div className={styles.suggestBlock}>
