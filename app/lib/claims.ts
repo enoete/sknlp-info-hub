@@ -30,7 +30,8 @@ export interface DashboardStats {
 export async function getDashboardClaims(): Promise<DashboardClaim[]> {
   const { rows } = await pool.query<DashboardClaim & { source_start_seconds: number | null }>(
     `SELECT
-       c.id, c.title, c.summary, c.category, c.citizen_impact, c.year,
+       c.id, c.title, c.summary, c.category, c.citizen_impact,
+       EXTRACT(YEAR FROM c.event_date)::INT AS year,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.speaker_org AS source_org, s.origin_url AS source_url, s.source_type,
        (SELECT ts.start_seconds
@@ -63,8 +64,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
        count(*) FILTER (WHERE c.stance = 'accomplishment') AS accomplishments,
        count(DISTINCT s.id) AS sources_indexed,
        count(*) FILTER (WHERE c.stance = 'opposition_statement') AS opposition_claims,
-       min(c.year) AS min_year,
-       max(c.year) AS max_year
+       min(EXTRACT(YEAR FROM c.event_date))::INT AS min_year,
+       max(EXTRACT(YEAR FROM c.event_date))::INT AS max_year
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id

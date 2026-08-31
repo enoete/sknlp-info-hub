@@ -222,7 +222,12 @@ CREATE TABLE claims (
     -- explicit statement in the video, never inferred from upload date.
     -- Never copied into event_date automatically.
     event_date_suggested DATE,
-    year            INT,
+    -- No stored `year` column — it was a separately-authored copy of
+    -- event_date's year that drifted out of sync in practice (several
+    -- write paths set event_date but never touched year, so real dated
+    -- claims silently vanished from year-based stats/filters). Derive it
+    -- at query time instead: EXTRACT(YEAR FROM event_date). See
+    -- idx_claims_event_date_category below for the index this replaces.
     -- Full-text search (no Voyage AI/embeddings key yet — this is the real
     -- retrieval path for "Ask the Record" until embedding-based similarity
     -- search replaces it). 'english' config is written explicitly (not
@@ -329,7 +334,7 @@ CREATE TABLE events (
 -- ------------------------------------------------------------
 -- Indexes
 -- ------------------------------------------------------------
-CREATE INDEX idx_claims_year_category ON claims (year, category) WHERE review_status = 'approved';
+CREATE INDEX idx_claims_event_date_category ON claims (event_date, category) WHERE review_status = 'approved';
 CREATE INDEX idx_claims_stance ON claims (stance) WHERE review_status = 'approved';
 CREATE INDEX idx_claims_embedding ON claims USING ivfflat (embedding vector_cosine_ops) WHERE review_status = 'approved';
 CREATE INDEX idx_claims_search_vector ON claims USING GIN (search_vector);

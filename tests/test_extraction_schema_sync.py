@@ -47,7 +47,6 @@ EXCLUDED_COLUMNS = {
     "embedding": "reserved for future embedding-based retrieval (no Voyage AI key yet) — nothing populates this today",
     "created_at": "DB-managed timestamp default",
     "updated_at": "DB-managed timestamp default",
-    "year": "derived from event_date, not independently authored",
 }
 
 # RESPONSE_SCHEMA fields that describe something other than a claims column

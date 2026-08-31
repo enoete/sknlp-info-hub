@@ -389,6 +389,8 @@ built, not from memory. Two valid states only:
 | `claims.event_date_suggested` | ✅ Migrated | 2026-08-30 |
 | `chat_queries` (table) | ✅ Migrated | 2026-08-31 |
 | `pg_trgm` extension | ✅ Migrated | 2026-08-31 |
+| `claims.year` — **removed** (was drifting out of sync with `event_date`; Dashboard now derives year via `EXTRACT(YEAR FROM event_date)` at query time in `getDashboardClaims`/`getDashboardStats`, single source of truth) | ✅ Migrated | 2026-08-31 |
+| `idx_claims_event_date_category` (replaces `idx_claims_year_category`) | ✅ Migrated | 2026-08-31 |
 
 One-time full audit completed 2026-08-31, prompted by the `chat_queries`
 gap: every table and column in `schema.sql` cross-checked
