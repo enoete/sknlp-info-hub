@@ -12,12 +12,22 @@ This is the standalone, direct-run mechanism only. It is NOT wired into
 the Source Manager's "run now" button — that comes later, once this core
 write path is independently proven (see CLAUDE.md).
 
-Scope, deliberately: writes `sources` + `claims` + `claim_sources` +
-`sources_registry` bookkeeping only. Does NOT touch `transcript_segments`
-or `speakers` — per-claim video timestamps and speaker identification are
-a separate, not-yet-wired pipeline (identify_speaker.py), and claims has
-no column to hold a per-claim timestamp anyway (only `sources.video_timestamp`
-exists, which is a whole-source field — doesn't fit a multi-claim video).
+Scope: writes `sources` + `claims` + `claim_sources` + `sources_registry`
+bookkeeping, plus one `transcript_segments` row per claim (linked via
+`claim_transcript_segments`) so citations can deep-link to the actual
+moment a claim was said, not just the bare video. Still does NOT touch
+`speakers` — voice identification is a separate, not-yet-wired pipeline
+(identify_speaker.py); transcript_segments.speaker_id stays NULL here.
+
+The per-claim segment's start_seconds is real data straight from Gemini's
+own start_timestamp for that claim — never guessed. end_seconds and the
+speaker/role context are best-effort: end_seconds is capped at the next
+claim's start (or the enclosing raw segment's own end_timestamp, or a
+flat +20s fallback, whichever is known and smallest), and
+speaker_title_at_time is borrowed from whichever raw `segments` entry
+(Gemini's broader speaker-turn blocks, not stored on their own here)
+actually contains the claim's timestamp. That's a reasonable citation
+window, not a claim that these are precise utterance boundaries.
 
 SAFETY: every claims row this script writes is verified, immediately
 after INSERT and before the transaction commits, to actually carry
@@ -52,6 +62,7 @@ import psycopg2
 import psycopg2.extras
 
 from extract_from_video import extract
+from segment_utils import mmss_to_seconds, compute_segment_window
 
 
 def get_db_connection():
@@ -121,7 +132,13 @@ def run_ingestion(registry_id: str, dry_run: bool = False) -> dict:
                 )
                 source_id = cur.fetchone()["id"]
 
+                raw_segments = extraction.get("segments", [])
+                claim_seconds_list = sorted(
+                    {s for s in (mmss_to_seconds(c.get("start_timestamp", "")) for c in claims) if s is not None}
+                )
+
                 claim_ids = []
+                segments_created = 0
                 for c in claims:
                     cur.execute(
                         """INSERT INTO claims
@@ -160,6 +177,31 @@ def run_ingestion(registry_id: str, dry_run: bool = False) -> dict:
                         (inserted["id"], source_id),
                     )
 
+                    # Deep-link timestamp: start_seconds is real (Gemini's own
+                    # start_timestamp for this claim); end_seconds is a
+                    # best-effort window, capped by whichever of (next
+                    # claim's start, enclosing raw segment's end, +20s
+                    # fallback) is smallest and still after start_seconds.
+                    claim_seconds = mmss_to_seconds(c.get("start_timestamp", ""))
+                    if claim_seconds is not None:
+                        end_seconds, speaker_title_at_time = compute_segment_window(claim_seconds, raw_segments, claim_seconds_list)
+
+                        cur.execute(
+                            """INSERT INTO transcript_segments
+                                   (source_id, start_seconds, end_seconds, text, speaker_title_at_time)
+                               VALUES (%s, %s, %s, %s, %s)
+                               RETURNING id""",
+                            (source_id, claim_seconds, end_seconds, c["summary"], speaker_title_at_time),
+                        )
+                        segment_id = cur.fetchone()["id"]
+                        cur.execute(
+                            "INSERT INTO claim_transcript_segments (claim_id, segment_id) VALUES (%s, %s)",
+                            (inserted["id"], segment_id),
+                        )
+                        segments_created += 1
+                    else:
+                        print(f"Warning: claim {inserted['id']} has no parseable start_timestamp ({c.get('start_timestamp')!r}); no deep-link segment created.", file=sys.stderr)
+
                 now = datetime.now(timezone.utc)
                 cur.execute(
                     """UPDATE sources_registry
@@ -173,6 +215,7 @@ def run_ingestion(registry_id: str, dry_run: bool = False) -> dict:
             "source_id": str(source_id),
             "claim_ids": claim_ids,
             "claims_count": len(claim_ids),
+            "segments_created": segments_created,
         }
     finally:
         conn.close()

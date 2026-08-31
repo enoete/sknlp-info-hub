@@ -175,6 +175,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: inherit;
+  text-decoration: none;
+}
+.meta .src:hover {
+  color: var(--red);
+  text-decoration: underline;
 }
 .meta .src svg {
   width: 12px;

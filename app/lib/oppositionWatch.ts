@@ -1,4 +1,5 @@
 import { pool } from './db';
+import { withTimestamp } from './youtube';
 
 export interface OppositionRecord {
   title: string;
@@ -40,7 +41,7 @@ async function findClosestRecord(
 ): Promise<OppositionRecord | null> {
   if (!category) return null;
 
-  const { rows } = await pool.query<OppositionRecord & { rank: number }>(
+  const { rows } = await pool.query<OppositionRecord & { rank: number; source_start_seconds: number | null }>(
     `WITH q AS (
        SELECT to_tsquery('english', string_agg(lexeme, ' | ')) AS tsq
        FROM unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme
@@ -48,7 +49,12 @@ async function findClosestRecord(
      SELECT
        c.title, c.summary, s.source_type, s.title AS source_title,
        s.speaker_org, s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
-       coalesce(ts_rank(c.search_vector, q.tsq), 0) AS rank
+       coalesce(ts_rank(c.search_vector, q.tsq), 0) AS rank,
+       (SELECT ts.start_seconds
+        FROM claim_transcript_segments cts
+        JOIN transcript_segments ts ON ts.id = cts.segment_id
+        WHERE cts.claim_id = c.id
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
@@ -58,7 +64,9 @@ async function findClosestRecord(
      LIMIT 1`,
     [oppositionText, category]
   );
-  return rows[0] ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return { ...row, origin_url: withTimestamp(row.origin_url, row.source_start_seconds) };
 }
 
 // Public Opposition Watch data: every approved opposition_statement claim,
@@ -79,12 +87,18 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
     speaker_org: string;
     origin_url: string;
     published_at: string | null;
+    source_start_seconds: number | null;
   }>(
     `SELECT
        c.id, c.category, c.title, c.summary,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org,
-       s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at
+       s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
+       (SELECT ts.start_seconds
+        FROM claim_transcript_segments cts
+        JOIN transcript_segments ts ON ts.id = cts.segment_id
+        WHERE cts.claim_id = c.id
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
@@ -95,7 +109,7 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
   const pairs: OppositionPair[] = [];
   for (const c of claims) {
     const record = await findClosestRecord(c.category, `${c.title} ${c.summary}`);
-    pairs.push({ ...c, record });
+    pairs.push({ ...c, origin_url: withTimestamp(c.origin_url, c.source_start_seconds), record });
   }
   return pairs;
 }

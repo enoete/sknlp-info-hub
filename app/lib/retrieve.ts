@@ -1,4 +1,5 @@
 import { pool } from './db';
+import { withTimestamp } from './youtube';
 
 export interface RetrievedRow {
   id: string;
@@ -30,7 +31,7 @@ export interface RetrievedRow {
 // in both places — no risk of a suggestion promising a hit the real endpoint
 // wouldn't actually produce.
 export async function retrieve(question: string): Promise<RetrievedRow[]> {
-  const { rows } = await pool.query<RetrievedRow>(
+  const { rows } = await pool.query<RetrievedRow & { source_start_seconds: number | null }>(
     `WITH q AS (
        SELECT to_tsquery('english', string_agg(lexeme, ' | ')) AS tsq
        FROM unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme
@@ -39,7 +40,12 @@ export async function retrieve(question: string): Promise<RetrievedRow[]> {
        c.id, c.stance, c.title, c.summary, c.category,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
        s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org,
-       s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at
+       s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
+       (SELECT ts.start_seconds
+        FROM claim_transcript_segments cts
+        JOIN transcript_segments ts ON ts.id = cts.segment_id
+        WHERE cts.claim_id = c.id
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
@@ -51,5 +57,9 @@ export async function retrieve(question: string): Promise<RetrievedRow[]> {
      LIMIT 3`,
     [question]
   );
-  return rows;
+  // Deep-link when we have a real per-claim timestamp — see claims.ts for
+  // the same pattern. The model is given (and must cite back verbatim) this
+  // already-deep-linked URL, so the downstream citation-match validation in
+  // /api/ask stays correct without any special-casing there.
+  return rows.map((r) => ({ ...r, origin_url: withTimestamp(r.origin_url, r.source_start_seconds) }));
 }

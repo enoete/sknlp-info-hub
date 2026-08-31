@@ -1,4 +1,5 @@
 import { pool } from './db';
+import { withTimestamp } from './youtube';
 
 export interface PendingClaim {
   id: string;
@@ -22,7 +23,7 @@ export interface PendingClaim {
 // — DISTINCT ON picks a single (most recently added) source per claim so
 // a claim linked to more than one source can't render as duplicate cards.
 export async function getPendingClaims(): Promise<PendingClaim[]> {
-  const { rows } = await pool.query<PendingClaim>(
+  const { rows } = await pool.query<PendingClaim & { source_start_seconds: number | null }>(
     `SELECT * FROM (
        SELECT DISTINCT ON (c.id)
          c.id, c.stance, c.title, c.summary, c.category, c.sentiment,
@@ -30,7 +31,12 @@ export async function getPendingClaims(): Promise<PendingClaim[]> {
          c.citizen_impact_suggested,
          to_char(c.event_date_suggested, 'YYYY-MM-DD') AS event_date_suggested,
          s.title AS source_title, s.origin_url, s.speaker_org, s.source_type,
-         c.created_at
+         c.created_at,
+         (SELECT ts.start_seconds
+          FROM claim_transcript_segments cts
+          JOIN transcript_segments ts ON ts.id = cts.segment_id
+          WHERE cts.claim_id = c.id
+          ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
        FROM claims c
        JOIN claim_sources cs ON cs.claim_id = c.id
        JOIN sources s ON s.id = cs.source_id
@@ -39,7 +45,7 @@ export async function getPendingClaims(): Promise<PendingClaim[]> {
      ) x
      ORDER BY created_at DESC`
   );
-  return rows;
+  return rows.map((r) => ({ ...r, origin_url: withTimestamp(r.origin_url, r.source_start_seconds) }));
 }
 
 export interface DecisionResult {
