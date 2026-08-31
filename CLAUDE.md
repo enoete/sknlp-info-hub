@@ -421,6 +421,25 @@ this: "No repeat-clustering yet... that's for when ingestion produces
 real volume") once there's enough approved government-side content that
 more than one record plausibly addresses the same opposition claim.
 
+**Update 2026-08-31**: the same cross-reference now also runs inside
+the chatbot, not just the static `/opposition-watch` page — per explicit
+instruction ("if there is a clarification that the government has
+provided, it should be included as a part of the answer... makes it
+fair"). `app/lib/retrieve.ts`'s `retrieve()` checks, for every retrieved
+opposition claim without a same-category accomplishment claim already
+in its top-3 lexeme hits, whether `findClosestRecord`'s same category-
+based matching turns one up, and appends it as a `match_type: 'related'`
+row. This matters because most real opposition-vs-record pairs don't
+share enough vocabulary for the tsquery match alone to find them (e.g.
+"water shortages in Cayon" vs. "well-drilling initiative with BEAD" —
+verified live, the chatbot correctly pulled in the drilling project as
+context while still respecting rule 5a: called it "ongoing," not a
+completed fix). The context block flags a related row explicitly so the
+model never treats a same-category pairing as confirmation — same
+"closest documented record, not a verdict" posture as the page itself,
+now reinforced in both `chatbot_system_prompt.md` and
+`system-prompt.ts`.
+
 - **PLP (People's Labour Party) — official YouTube** (`@plpsoskn`,
   channel id `UCere5DArMJ9FWykLbCKt61A`) — registered 2026-08-31
   (`sources_registry` id `36177b51-7b8f-4468-b974-3aa17ac27601`).
