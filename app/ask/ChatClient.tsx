@@ -136,13 +136,6 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
                     </div>
                   </div>
                 )}
-                {m.answer && (
-                  <div className={styles.debugLine}>
-                    retrieved {m.answer.retrieval_count ?? 0} candidate
-                    {m.answer.retrieval_count === 1 ? '' : 's'}
-                    {m.answer.retrieved_titles?.length ? `: ${m.answer.retrieved_titles.join('; ')}` : ''}
-                  </div>
-                )}
               </div>
             )
           )}
