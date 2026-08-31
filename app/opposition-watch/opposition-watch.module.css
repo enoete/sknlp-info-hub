@@ -1,0 +1,160 @@
+.pageHead {
+  margin-bottom: 24px;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+  font-weight: 700;
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  margin-bottom: 8px;
+}
+.pageHead h1 {
+  font-family: 'Anton', sans-serif;
+  font-size: 32px;
+  margin: 0 0 8px;
+}
+.pageHead p {
+  color: var(--muted);
+  max-width: 640px;
+  margin: 0;
+}
+
+.filterRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+  align-items: center;
+}
+.pill {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  cursor: pointer;
+}
+.pillActive {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+.filterSep {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+.emptyState {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Claim-vs-record pair card */
+.oppoPair {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.oppoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.catTag {
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-weight: 700;
+}
+.statusChip {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.statusDocumented {
+  background: var(--green-tint);
+  color: var(--green-ink);
+}
+.statusUndocumented {
+  background: var(--paper-2);
+  color: var(--muted);
+}
+
+.oppoHalf {
+  padding: 18px 20px;
+}
+.oppoHalfClaim {
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(200, 16, 46, 0.08), transparent);
+}
+.oppoHalfRecord {
+  background: linear-gradient(180deg, rgba(14, 138, 75, 0.08), transparent);
+}
+.oppoHalfNone {
+  background: none;
+}
+.oppoTag {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.oppoHalfClaim .oppoTag {
+  color: var(--red-ink);
+}
+.oppoHalfRecord .oppoTag {
+  color: var(--green-ink);
+}
+.oppoHalfNone .oppoTag {
+  color: var(--muted);
+}
+.oppoHalf p {
+  font-size: 13.5px;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+.oppoHalfNone p {
+  color: var(--muted);
+}
+.metaLine {
+  font-size: 11.5px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.metaLine a {
+  text-decoration: underline;
+  color: var(--muted);
+}
+.mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
