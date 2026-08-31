@@ -372,26 +372,89 @@ than being folded into "local news coverage."
   should be run through `run_ingestion.py`/`run_batch.py` until the
   government-side historical backlog is substantially done.
 
-## Opposition side — sequencing (decided 2026-08-31)
+## Opposition side — sequencing (decided 2026-08-31, revised same day)
 
-The opposition/"Opposition Watch" build-out (broader source coverage,
-UI, comparison logic) is real scope, not being dropped — but it comes
-**after** the government-side historical record is substantially
-complete, not in parallel with it. Rationale: the government-side ZIZ
-high-value backlog (`/tmp/ziz_high_value.json` — 51 National Assembly
-sittings, 8 PM/Minister statements, 53 press conferences) is largely
-unprocessed, chunking now makes all of it ingestable (see "Ingestion
-agent" video-chunking work), and it represents far more total
-documented volume than the opposition side ever will (PAM's own
-YouTube channel posts infrequently — see "Known sources for
-`sources_registry` seed data" above). Finishing one side deeply before
-opening a second front avoids a half-built government record sitting
-next to a half-built opposition record with neither demo-ready.
+Original decision: opposition build-out comes strictly **after** the
+government-side historical record is substantially complete, not in
+parallel — rationale was that the ZIZ high-value backlog
+(`/tmp/ziz_high_value.json` — 51 National Assembly sittings, 8
+PM/Minister statements, 53 press conferences) represents far more total
+volume and finishing one side deeply avoids two half-built records.
+
+**Revised same day, per explicit instruction from the person who
+commissioned this project**: run both concurrently. Government-side
+batch ingestion (`run_batch.py`) keeps running unattended as a detached
+process (see "Detached long-running ingestion processes" below) while
+opposition-side discovery starts now, not after. Framed explicitly as
+"a slow and steady race" — expect low volume for a while (the corpus
+the cross-reference function has to work with is still thin), not a
+rush to fill Opposition Watch immediately. Priority order given:
+**Kyle Flanders (Talk SKN) and Straight Talk first**, PLP's official
+channel third.
+
 `sources_registry` rows for opposition/third-party sources (Talk SKN,
-Straight Talk) can be registered ahead of time — registering costs
-nothing and just means the config is ready — but actually running
-ingestion against them should wait for an explicit go-ahead once the
-government backlog is in a good state.
+Straight Talk, PLP) are all registered — see below for PLP, the third
+one added at this revision. Incremental discovery
+(`run_channel_discovery.py --registry-id <id> --max-new N`) is how new
+videos actually get pulled in per channel, same mechanism already used
+for `@ZIZRadioTV`; a registry row alone still ingests nothing on its
+own (see "Ingestion agent" above).
+
+**"Cross-references and checks for truth/clarification" — already
+built, not a new feature.** `app/lib/oppositionWatch.ts`'s
+`findClosestRecord()` already does exactly this: for a given opposition
+claim, it full-text-searches all approved same-category accomplishment
+claims (same OR-of-stemmed-lexemes tsquery approach as `retrieve.ts`,
+picked after `plainto_tsquery`'s implicit AND was tested and diluted a
+real single-keyword match to near-zero rank) and surfaces the single
+closest-ranked one, computed live at page-render time — never stored,
+so it can never go stale as more approved claims get added. Rendered on
+`/opposition-watch` as "Closest documented record" next to the
+opposition statement, or "No official record found... This isn't a
+denial" when nothing matches — deliberately neutral language, no
+verdict, consistent with the chatbot's rule 3. With opposition-side
+ingestion only just starting and the government-side corpus still
+filling in, expect mostly "No official record found" for now — that's
+the honest state of the data, not a bug in the matching. Revisit
+`LIMIT 1` → multiple clarifying records (the code comment already flags
+this: "No repeat-clustering yet... that's for when ingestion produces
+real volume") once there's enough approved government-side content that
+more than one record plausibly addresses the same opposition claim.
+
+- **PLP (People's Labour Party) — official YouTube** (`@plpsoskn`,
+  channel id `UCere5DArMJ9FWykLbCKt61A`) — registered 2026-08-31
+  (`sources_registry` id `36177b51-7b8f-4468-b974-3aa17ac27601`).
+  Distinct party from PAM — Timothy Harris's breakaway party (split from
+  SKNLP in 2013), led the Team Unity coalition government 2015-2022,
+  reduced to a single seat and opposition status after the 2022
+  election. Verified via YouTube Data API (not the RSS-only spot-check
+  used for the two commentary channels, since "PLP" alone was ambiguous
+  enough — several low-activity channels share the name — that
+  subscriber/video-count comparison was needed to confirm the real one:
+  2,570 subs, 208 videos, active as of Aug 25 2026, vs. two near-empty
+  lookalikes with 2-4 videos each). `source_type = 'opposition'` (same
+  as PAM's registry row — an official party channel, not independent
+  commentary), `tier = 'third_party'`, `detection_method = 'public_rss'`.
+
+## Detached long-running ingestion processes — survive session disconnects
+
+`run_batch.py`/`run_channel_discovery.py` calls that are expected to run
+for hours (the ZIZ historical backlog, ongoing opposition discovery)
+must be launched detached from the Claude Code session, not via the
+session's own background-task tracking. Confirmed the hard way
+2026-08-31: a batch launched through the session's background-job
+mechanism was killed outright, twice, the moment the session's own
+connection dropped — unrelated to whether the user's connection to
+Claude Code stayed up, purely an artifact of the harness tearing down
+its tracked child processes with the session. Fix: launch with
+`setsid nohup <cmd> > logfile 2>&1 < /dev/null & disown`, which gives
+the process its own session id with PPID `1` (reparented to init) —
+verified via `ps -o pid,ppid,pgid,sid` that it's fully independent of
+the Claude Code session tree. Only a droplet reboot/power-loss stops
+it after that. Since it's no longer tracked by the harness, there's no
+automatic completion notification — check progress on demand via the
+process's log file and a direct DB query (count of `sources` rows per
+`registry_id`), not by waiting for a task notification.
 
 ## Copyright / display rule for news sources
 
