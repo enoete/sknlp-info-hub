@@ -14,6 +14,7 @@ export default async function DashboardPage() {
         <Link href="/ask">Ask the Record →</Link>
         <Link href="/opposition-watch">Opposition Watch →</Link>
         <Link href="/source-manager">Source Manager (internal) →</Link>
+        <Link href="/review-queue">Review Queue (internal) →</Link>
       </div>
 
       <div className={styles.pageHead}>

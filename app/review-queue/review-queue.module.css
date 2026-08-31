@@ -1,0 +1,173 @@
+.pageHead {
+  margin-bottom: 24px;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red);
+  font-weight: 700;
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  margin-bottom: 8px;
+}
+.pageHead h1 {
+  font-family: 'Anton', sans-serif;
+  font-size: 32px;
+  margin: 0 0 8px;
+}
+.pageHead p {
+  color: var(--muted);
+  max-width: 640px;
+  margin: 0;
+}
+
+.emptyState {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.metaRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.tag {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.tagAccomplishment {
+  background: var(--green-tint);
+  color: var(--green-ink);
+}
+.tagOpposition {
+  background: var(--red-tint);
+  color: var(--red-ink);
+}
+.tagPending {
+  background: var(--gold-tint);
+  color: var(--gold-ink);
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 4px;
+  font-family: 'Barlow Semi Condensed', sans-serif;
+}
+.summary {
+  font-size: 13.5px;
+  color: var(--ink);
+  margin: 0 0 10px;
+}
+.srcLine {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.srcLine a {
+  text-decoration: underline;
+  color: var(--muted);
+}
+
+.suggestBlock {
+  background: var(--paper-2);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.suggestLabel {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--gold-ink);
+  margin-bottom: 4px;
+}
+.suggestField {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.suggestField:last-child {
+  margin-bottom: 0;
+}
+.suggestField b {
+  color: var(--muted);
+  font-weight: 700;
+}
+.suggestNote {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-style: italic;
+}
+.suggestEmpty {
+  font-size: 12px;
+  color: var(--faint);
+  font-style: italic;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn {
+  border: none;
+  border-radius: 7px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  cursor: pointer;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btnApprove {
+  background: var(--green-tint);
+  color: var(--green-ink);
+}
+.btnReject {
+  background: var(--red-tint);
+  color: var(--red-ink);
+}
+
+.decisionNote {
+  margin-top: 10px;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.decisionApproved {
+  background: var(--green-tint);
+  color: var(--green-ink);
+}
+.decisionRejected {
+  background: var(--red-tint);
+  color: var(--red-ink);
+}
+.decisionError {
+  background: var(--red-tint);
+  color: var(--red);
+}
