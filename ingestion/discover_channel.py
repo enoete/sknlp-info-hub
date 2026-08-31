@@ -216,6 +216,8 @@ def find_historical_candidates(
     already_seen_urls: set[str],
     page_size: int = 50,
     max_pages: int = 200,
+    start_page: int = 0,
+    seed_last_confirmed_date: Optional[date] = None,
 ) -> list[DiscoveredVideo]:
     """Walks the uploads playlist backward from most recent, page by page,
     until title-parsed dates confirm we've crossed before the scope
@@ -227,9 +229,19 @@ def find_historical_candidates(
     run through Gemini in one go, same max_new-style budgeting as
     find_new_in_scope_videos."""
     candidates = []
-    last_confirmed_date: Optional[date] = None
+    last_confirmed_date: Optional[date] = seed_last_confirmed_date
+    # A single mistyped year in a title (real example hit during testing:
+    # "Radio Market ... - January 14, 2022" sitting between two January
+    # 2023 uploads -- a one-year typo on the channel's own upload, not a
+    # real chronology jump) must not be trusted enough to end the whole
+    # walk early. Adjacent items in this playlist are realistically at
+    # most a few days apart; a parsed date implying a jump bigger than
+    # this is treated as an unreliable outlier -- kept as a candidate
+    # (still probably real content) but never allowed to move
+    # last_confirmed_date or trigger the cutoff check.
+    MAX_PLAUSIBLE_JUMP_DAYS = 45
 
-    for page in range(max_pages):
+    for page in range(start_page, start_page + max_pages):
         start = page * page_size + 1
         end = start + page_size - 1
         entries = _list_uploads_page(channel_id, start, end)
@@ -245,7 +257,11 @@ def find_historical_candidates(
 
             parsed = parse_date_from_title(title)
             if parsed is not None:
-                last_confirmed_date = parsed
+                if last_confirmed_date is None or abs((last_confirmed_date - parsed).days) <= MAX_PLAUSIBLE_JUMP_DAYS:
+                    last_confirmed_date = parsed
+                else:
+                    print(f"Ignoring implausible date jump ({parsed}, vs running {last_confirmed_date}) in title: {title!r}", file=sys.stderr)
+                    parsed = None  # don't attach an untrusted date to this candidate either
 
             if last_confirmed_date is not None and not in_scope(last_confirmed_date):
                 print(
