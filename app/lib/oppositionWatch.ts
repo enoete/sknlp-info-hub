@@ -35,7 +35,7 @@ export interface OppositionPair {
 // implicit AND, which was tested here first and returned a useless tied
 // near-zero rank for every candidate — a single real keyword match like
 // "crime" got diluted into nothing by the rest of the AND-ed sentence).
-async function findClosestRecord(
+export async function findClosestRecord(
   category: string | null,
   oppositionText: string
 ): Promise<OppositionRecord | null> {

@@ -1,5 +1,6 @@
 import { pool } from './db';
 import { withTimestamp } from './youtube';
+import { findClosestRecord, OppositionRecord } from './oppositionWatch';
 
 export interface DashboardClaim {
   id: string;
@@ -84,5 +85,125 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     sourcesIndexed: Number(row.sources_indexed),
     oppositionClaims: Number(row.opposition_claims),
     yearsLabel
+  };
+}
+
+// ------------------------------------------------------------
+// Timeline — every approved claim (both stances), ordered by event_date.
+// Undated claims are a real, visible gap (see CLAUDE.md's Dashboard fix
+// notes: ~49 of ~65 approved accomplishments have no event_date from
+// older seed batches) — the client groups them into their own explicit
+// section rather than silently dropping them, so the gap stays visible
+// and closes naturally as a human confirms dates via the Review Queue's
+// event_date_suggested flow, not by hiding the problem.
+// ------------------------------------------------------------
+export interface TimelineClaim {
+  id: string;
+  stance: string;
+  title: string;
+  summary: string;
+  category: string | null;
+  citizen_impact: string | null;
+  event_date: string | null;
+}
+
+export async function getTimelineClaims(): Promise<TimelineClaim[]> {
+  const { rows } = await pool.query<TimelineClaim>(
+    `SELECT c.id, c.stance, c.title, c.summary, c.category, c.citizen_impact,
+            to_char(c.event_date, 'YYYY-MM-DD') AS event_date
+     FROM claims c
+     WHERE c.review_status = 'approved'
+     ORDER BY c.event_date DESC NULLS LAST, c.created_at DESC`
+  );
+  return rows;
+}
+
+// ------------------------------------------------------------
+// Claim detail — the "click through to the actual record" destination
+// for the Timeline (and anywhere else that links a single claim). Mirrors
+// design-reference/mockup.html's claim-detail-head/detail-grid layout:
+// one citation (same one-source-per-claim pattern used everywhere else
+// in this app), proof_documents if any were uploaded, and — for an
+// opposition-stance claim only — the closest same-category accomplishment
+// record via the same matcher Opposition Watch itself uses, so the two
+// pages can never disagree about which record a claim gets paired with.
+// ------------------------------------------------------------
+export interface ClaimProofDocument {
+  id: string;
+  title: string;
+  file_type: string;
+  file_url: string;
+  document_dated_at: string | null;
+}
+
+export interface ClaimDetail {
+  id: string;
+  stance: string;
+  title: string;
+  summary: string;
+  category: string | null;
+  citizen_impact: string | null;
+  event_date: string | null;
+  review_status: string;
+  source_type: string;
+  source_title: string;
+  speaker_org: string;
+  speaker_name: string | null;
+  source_url: string;
+  published_at: string | null;
+  source_count: number;
+  proof_documents: ClaimProofDocument[];
+  closest_record: OppositionRecord | null;
+}
+
+export async function getClaimById(id: string): Promise<ClaimDetail | null> {
+  const { rows } = await pool.query<
+    Omit<ClaimDetail, 'source_url' | 'proof_documents' | 'closest_record' | 'source_count'> & {
+      origin_url: string;
+      source_start_seconds: number | null;
+      source_count: string;
+    }
+  >(
+    `SELECT
+       c.id, c.stance, c.title, c.summary, c.category, c.citizen_impact,
+       to_char(c.event_date, 'YYYY-MM-DD') AS event_date, c.review_status,
+       s.source_type, s.title AS source_title, s.speaker_org, s.speaker_name,
+       s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
+       (SELECT ts.start_seconds
+        FROM claim_transcript_segments cts
+        JOIN transcript_segments ts ON ts.id = cts.segment_id
+        WHERE cts.claim_id = c.id
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds,
+       (SELECT count(*) FROM claim_sources cs2 WHERE cs2.claim_id = c.id) AS source_count
+     FROM claims c
+     JOIN claim_sources cs ON cs.claim_id = c.id
+     JOIN sources s ON s.id = cs.source_id
+     WHERE c.id = $1 AND c.review_status = 'approved'
+     ORDER BY s.created_at DESC
+     LIMIT 1`,
+    [id]
+  );
+  const row = rows[0];
+  if (!row) return null;
+
+  const { rows: proofRows } = await pool.query<ClaimProofDocument>(
+    `SELECT pd.id, pd.title, pd.file_type, pd.file_url,
+            to_char(pd.document_dated_at, 'YYYY-MM-DD') AS document_dated_at
+     FROM claim_proof_documents cpd
+     JOIN proof_documents pd ON pd.id = cpd.proof_id
+     WHERE cpd.claim_id = $1
+     ORDER BY pd.document_dated_at DESC NULLS LAST`,
+    [id]
+  );
+
+  const closest_record =
+    row.stance === 'opposition_statement' ? await findClosestRecord(row.category, `${row.title} ${row.summary}`) : null;
+
+  return {
+    ...row,
+    source_url: withTimestamp(row.origin_url, row.source_start_seconds),
+    source_count: Number(row.source_count),
+    proof_documents: proofRows,
+    closest_record
   };
 }

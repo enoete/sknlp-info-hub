@@ -11,6 +11,7 @@ export default async function DashboardPage() {
   return (
     <main className="max-w-5xl mx-auto px-9 py-12">
       <div className={styles.topLinks}>
+        <Link href="/timeline">Timeline →</Link>
         <Link href="/ask">Ask the Record →</Link>
         <Link href="/opposition-watch">Opposition Watch →</Link>
         <Link href="/source-manager">Source Manager (internal) →</Link>
