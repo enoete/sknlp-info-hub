@@ -60,8 +60,10 @@ from datetime import date, datetime, timezone
 
 import psycopg2
 import psycopg2.extras
+from google import genai
 
-from extract_from_video import extract_with_chunking_fallback, normalize_accomplishment_type
+from claim_dedup import find_matching_approved_claim
+from extract_from_video import _generate_with_retry, extract_with_chunking_fallback, normalize_accomplishment_type
 from segment_utils import mmss_to_seconds, compute_segment_window
 from scope_config import ADMINISTRATION_START, in_scope
 
@@ -135,6 +137,8 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
     if dry_run:
         return {"dry_run": True, "registry_id": registry["id"], "youtube_url": youtube_url, "claims_count": len(claims), "extraction": extraction}
 
+    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+
     with conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
@@ -158,44 +162,69 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
 
             claim_ids = []
             segments_created = 0
+            linked_count = 0
+            new_count = 0
             for c in claims:
-                cur.execute(
-                    """INSERT INTO claims
-                           (stance, title, summary, category, accomplishment_type, sentiment,
-                            citizen_impact_suggested, event_date_suggested,
-                            extracted_by, extraction_confidence, review_status)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'gemini_agent', %s, 'pending_review')
-                       RETURNING id, review_status""",
-                    (
-                        c["stance"],
-                        c["title"],
-                        c["summary"],
-                        c["category"],
-                        normalize_accomplishment_type(c.get("accomplishment_type")),
-                        c["sentiment"],
-                        (c.get("citizen_impact_suggested") or "").strip() or None,
-                        parse_suggested_date(c.get("event_date_suggested", "")),
-                        c["extraction_confidence"],
-                    ),
-                )
-                inserted = cur.fetchone()
-
-                # Hard safety gate: this is the one thing this script is
-                # never allowed to get wrong. Any deviation aborts the
-                # whole transaction (the `with conn:` block rolls back
-                # on exception) rather than let a single bad row through.
-                if inserted["review_status"] != "pending_review":
-                    raise RuntimeError(
-                        f"SAFETY VIOLATION: claim {inserted['id']} inserted with "
-                        f"review_status={inserted['review_status']!r}, expected 'pending_review'. "
-                        f"Aborting entire run — nothing will be committed."
+                # Corroboration check (see claim_dedup.py) -- before ever
+                # inserting a new claim, check whether an approved claim
+                # already covers this exact same fact from a different
+                # source. Real gap until 2026-08-31: this pipeline never
+                # checked at all, confirmed live when Straight Talk's own
+                # copy of a claim SKNIS/Talk SKN had already covered
+                # existed as a standalone duplicate. A match here still
+                # gets its own transcript_segments row (this video's own
+                # timestamp is a real, separate citation), just linked to
+                # the EXISTING claim id instead of creating a new one.
+                existing_claim_id = find_matching_approved_claim(conn, client, _generate_with_retry, c["title"], c["summary"], c["stance"])
+                if existing_claim_id:
+                    claim_id = existing_claim_id
+                    cur.execute(
+                        "INSERT INTO claim_sources (claim_id, source_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                        (claim_id, source_id),
                     )
-                claim_ids.append(str(inserted["id"]))
+                    linked_count += 1
+                    print(f"  Linked to existing claim {claim_id} (corroborating source, not a duplicate).", file=sys.stderr)
+                else:
+                    cur.execute(
+                        """INSERT INTO claims
+                               (stance, title, summary, category, accomplishment_type, sentiment,
+                                citizen_impact_suggested, event_date_suggested, featured,
+                                extracted_by, extraction_confidence, review_status)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'gemini_agent', %s, 'pending_review')
+                           RETURNING id, review_status""",
+                        (
+                            c["stance"],
+                            c["title"],
+                            c["summary"],
+                            c["category"],
+                            normalize_accomplishment_type(c.get("accomplishment_type")),
+                            c["sentiment"],
+                            (c.get("citizen_impact_suggested") or "").strip() or None,
+                            parse_suggested_date(c.get("event_date_suggested", "")),
+                            c.get("featured", True),
+                            c["extraction_confidence"],
+                        ),
+                    )
+                    inserted = cur.fetchone()
 
-                cur.execute(
-                    "INSERT INTO claim_sources (claim_id, source_id) VALUES (%s, %s)",
-                    (inserted["id"], source_id),
-                )
+                    # Hard safety gate: this is the one thing this script is
+                    # never allowed to get wrong. Any deviation aborts the
+                    # whole transaction (the `with conn:` block rolls back
+                    # on exception) rather than let a single bad row through.
+                    if inserted["review_status"] != "pending_review":
+                        raise RuntimeError(
+                            f"SAFETY VIOLATION: claim {inserted['id']} inserted with "
+                            f"review_status={inserted['review_status']!r}, expected 'pending_review'. "
+                            f"Aborting entire run — nothing will be committed."
+                        )
+                    claim_id = inserted["id"]
+                    new_count += 1
+
+                    cur.execute(
+                        "INSERT INTO claim_sources (claim_id, source_id) VALUES (%s, %s)",
+                        (claim_id, source_id),
+                    )
+                claim_ids.append(str(claim_id))
 
                 # Deep-link timestamp: start_seconds is real (Gemini's own
                 # start_timestamp for this claim); end_seconds is a
@@ -218,11 +247,11 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
                     segment_id = cur.fetchone()["id"]
                     cur.execute(
                         "INSERT INTO claim_transcript_segments (claim_id, segment_id) VALUES (%s, %s)",
-                        (inserted["id"], segment_id),
+                        (claim_id, segment_id),
                     )
                     segments_created += 1
                 else:
-                    print(f"Warning: claim {inserted['id']} has no parseable start_timestamp ({c.get('start_timestamp')!r}); no deep-link segment created.", file=sys.stderr)
+                    print(f"Warning: claim {claim_id} has no parseable start_timestamp ({c.get('start_timestamp')!r}); no deep-link segment created.", file=sys.stderr)
 
             now = datetime.now(timezone.utc)
             cur.execute(
@@ -238,6 +267,8 @@ def ingest_one_video(conn, registry: dict, youtube_url: str, dry_run: bool = Fal
         "youtube_url": youtube_url,
         "claim_ids": claim_ids,
         "claims_count": len(claim_ids),
+        "new_claims": new_count,
+        "linked_to_existing": linked_count,
         "segments_created": segments_created,
     }
 

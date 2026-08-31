@@ -294,6 +294,28 @@ CREATE TABLE claims (
     -- to citizen_impact) is what makes "never auto-generated" enforceable
     -- instead of just a comment nobody notices at the call site.
     citizen_impact_suggested TEXT,
+    -- Distinct from review_status -- an approved claim is real, verified,
+    -- and citable, but not every real claim belongs in the curated
+    -- public browsing experience (Dashboard/Timeline). Decided
+    -- 2026-08-31 after a concrete example: a "Safe Rescue of All
+    -- Passengers and Crew from Apple Syder Ferry Incident" claim is a
+    -- genuine, sourced fact, but it's an isolated incident, not a
+    -- government policy/decision/initiative -- exactly the kind of
+    -- "noise" that would overwhelm the curated views if the volume of
+    -- ingestion keeps growing, per the client's own words: "if it's too
+    -- much data, it will become overwhelming and people won't want to
+    -- use it." featured=false claims stay fully approved and fully
+    -- searchable by Ask the Record (retrieve.ts does NOT filter on this
+    -- column, deliberately -- "some of the stuff can be used to answer
+    -- chatbot-related questions") -- they're just excluded from
+    -- getDashboardClaims()/getTimelineClaims()'s curated grids. Defaults
+    -- true (most real accomplishment/opposition claims belong on the
+    -- public views); the ingestion agent can propose false directly
+    -- (see extract_from_video.py's RESPONSE_SCHEMA.featured, a bounded
+    -- classification call like category/accomplishment_type, not a
+    -- *_suggested human-confirmation field), and it's editable after
+    -- the fact in the review queue, same pattern as accomplishment_type.
+    featured        BOOLEAN NOT NULL DEFAULT true,
     review_status   review_status NOT NULL DEFAULT 'pending_review',
     reviewed_by     UUID REFERENCES admin_users(id),
     reviewed_at     TIMESTAMPTZ,

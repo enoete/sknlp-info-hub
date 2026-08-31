@@ -77,7 +77,7 @@ export async function retrieve(question: string): Promise<RetrievedRow[]> {
        AND q.tsq IS NOT NULL
        AND (c.search_vector @@ q.tsq OR s.search_vector @@ q.tsq)
      ORDER BY (ts_rank(c.search_vector, q.tsq) + ts_rank(s.search_vector, q.tsq)) DESC
-     LIMIT 3`,
+     LIMIT 5`,
     [question]
   );
   // Deep-link when we have a real per-claim timestamp — see claims.ts for

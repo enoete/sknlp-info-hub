@@ -120,6 +120,28 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
     }
   }
 
+  // Featured toggle (see schema.sql's claims.featured comment) — same
+  // save-on-change pattern as the accomplishment-type dropdown above,
+  // just a checkbox instead of a select.
+  const [featuredSaving, setFeaturedSaving] = useState<Record<string, boolean>>({});
+
+  async function updateFeatured(claimId: string, featured: boolean) {
+    setFeaturedSaving((s) => ({ ...s, [claimId]: true }));
+    try {
+      const res = await fetch(`/api/claims/${claimId}/featured`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ featured })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setClaims((cs) => cs.map((c) => (c.id === claimId ? { ...c, featured: data.featured } : c)));
+      }
+    } finally {
+      setFeaturedSaving((s) => ({ ...s, [claimId]: false }));
+    }
+  }
+
   // "This completes an earlier claim" linking (see schema.sql's
   // completes_claim_id) — search-and-pick rather than free text, so the
   // link always points at a real claim id.
@@ -338,6 +360,19 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
                 >
                   {c.review_status === 'pending_review' ? 'Pending review' : c.review_status}
                 </span>
+                <label
+                  className={styles.tag}
+                  style={{ background: c.featured ? 'var(--paper-2)' : 'var(--red-tint)', color: c.featured ? 'var(--muted)' : 'var(--red-ink)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  title="Uncheck for a real, sourced claim that's still not right for the curated Dashboard/Timeline (an isolated incident, not a policy/initiative) — it stays fully approved and searchable in Ask the Record either way."
+                >
+                  <input
+                    type="checkbox"
+                    checked={c.featured}
+                    disabled={!!featuredSaving[c.id]}
+                    onChange={(e) => updateFeatured(c.id, e.target.checked)}
+                  />
+                  {c.featured ? 'Featured' : 'Hidden from Dashboard'}
+                </label>
               </div>
               {typeError[c.id] && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{typeError[c.id]}</div>}
 

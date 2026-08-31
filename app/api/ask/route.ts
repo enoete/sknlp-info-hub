@@ -24,7 +24,8 @@ const ANSWER_TOOL = {
       },
       summary: {
         type: 'string',
-        description: 'Set only when found=true. 1-2 sentences, closely reflecting the claim, not embellished.'
+        description:
+          'Set only when found=true. Closely reflecting the claim, not embellished — usually 1-2 sentences, but extend it when genuinely synthesizing multiple relevant retrieved claims into one complete answer (a status update, a related record, a direct factual contradiction per rule 3c) rather than truncating real, useful context just to stay short.'
       },
       stance: {
         type: 'string',

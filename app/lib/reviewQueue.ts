@@ -10,6 +10,7 @@ export interface ReviewQueueClaim {
   summary: string;
   category: string | null;
   accomplishment_type: string | null;
+  featured: boolean;
   completes_claim_id: string | null;
   completes_claim_title: string | null;
   sentiment: string | null;
@@ -46,7 +47,7 @@ export async function getReviewQueueClaims(): Promise<ReviewQueueClaim[]> {
   const { rows } = await pool.query<ReviewQueueClaim & { source_start_seconds: number | null }>(
     `SELECT * FROM (
        SELECT DISTINCT ON (c.id)
-         c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type,
+         c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.featured,
          c.completes_claim_id, (SELECT title FROM claims WHERE id = c.completes_claim_id) AS completes_claim_title,
          c.sentiment,
          c.extraction_confidence, c.extracted_by, c.review_status,
@@ -195,6 +196,26 @@ export async function updateAccomplishmentType(
     `UPDATE claims SET accomplishment_type = $2 WHERE id = $1
      RETURNING id, accomplishment_type`,
     [claimId, accomplishmentType]
+  );
+  return rows[0] ?? null;
+}
+
+// Toggles whether an approved claim appears in the curated public
+// browsing views (Dashboard/Timeline) -- see schema.sql's claims.featured
+// comment. Never affects review_status, retrieval (Ask the Record),
+// or Opposition Watch: a claim can be real, sourced, and fully
+// approved/searchable while still being excluded from the curated grid
+// (e.g. a genuine but off-topic incident report). Works in any
+// review_status, same as accomplishment_type, since noise can be
+// spotted before or after a claim goes live.
+export async function updateFeatured(
+  claimId: string,
+  featured: boolean
+): Promise<{ id: string; featured: boolean } | null> {
+  const { rows } = await pool.query<{ id: string; featured: boolean }>(
+    `UPDATE claims SET featured = $2 WHERE id = $1
+     RETURNING id, featured`,
+    [claimId, featured]
   );
   return rows[0] ?? null;
 }

@@ -54,7 +54,7 @@ export async function getDashboardClaims(): Promise<DashboardClaim[]> {
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
      LEFT JOIN claims done ON done.completes_claim_id = c.id AND done.review_status = 'approved'
-     WHERE c.review_status = 'approved' AND c.stance = 'accomplishment'
+     WHERE c.review_status = 'approved' AND c.stance = 'accomplishment' AND c.featured = true
      ORDER BY c.event_date DESC NULLS LAST`
   );
   // Deep-link to the exact moment a claim was said when we have a real
@@ -81,7 +81,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
-     WHERE c.review_status = 'approved'`
+     WHERE c.review_status = 'approved' AND c.featured = true`
   );
   const row = rows[0];
   const yearsLabel =
@@ -124,7 +124,7 @@ export async function getTimelineClaims(): Promise<TimelineClaim[]> {
     `SELECT c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
             to_char(c.event_date, 'YYYY-MM-DD') AS event_date
      FROM claims c
-     WHERE c.review_status = 'approved'
+     WHERE c.review_status = 'approved' AND c.featured = true
      ORDER BY c.event_date DESC NULLS LAST, c.created_at DESC`
   );
   return rows;

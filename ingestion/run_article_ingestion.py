@@ -37,78 +37,16 @@ from google import genai
 
 from extract_from_article import extract_article, fetch_article
 from extract_from_video import _generate_with_retry
+from claim_dedup import find_matching_approved_claim as _find_matching_approved_claim
 from run_ingestion import get_db_connection, fetch_registry_row, parse_suggested_date
 from scope_config import ADMINISTRATION_START, in_scope
 
-# Below this, title similarity alone is noise -- same floor
-# oppositionWatch.ts settled on empirically (MIN_RELEVANT_RANK's sibling
-# for pg_trgm similarity() rather than ts_rank; different function, same
-# "cheap pre-filter only, not the correctness boundary" role). The real
-# gate is _is_same_claim()'s LLM check below.
-MIN_SIMILARITY = 0.35
-
-SAME_CLAIM_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "same_claim": {
-            "type": "boolean",
-            "description": "true only if both texts describe the exact same specific fact/event/decision -- not just the same general topic or institution.",
-        }
-    },
-    "required": ["same_claim"],
-}
-
-
-def _is_same_claim(client, new_title: str, new_summary: str, existing_title: str, existing_summary: str) -> bool:
-    """Real relevance judgment, not just similarity() score -- same
-    reasoning as oppositionWatch.ts's isGenuinelyRelevant: two claims
-    can share a lot of vocabulary (same institution, same category)
-    without being the same specific fact. Fails closed (no merge) on
-    any error, consistent with never silently misattributing a
-    citation to the wrong claim."""
-    try:
-        response = _generate_with_retry(
-            client,
-            model="gemini-3.6-flash",
-            contents=[{
-                "text": (
-                    "Do these two claims describe the EXACT SAME specific fact, event, or decision "
-                    "(not just the same general topic)?\n\n"
-                    f'Claim A: "{new_title}" — {new_summary}\n\n'
-                    f'Claim B: "{existing_title}" — {existing_summary}'
-                )
-            }],
-            config={"response_mime_type": "application/json", "response_schema": SAME_CLAIM_SCHEMA},
-        )
-        return json.loads(response.text).get("same_claim") is True
-    except Exception as e:
-        print(f"  Warning: same-claim check failed ({e}); treating as not the same, will insert new claim.", file=sys.stderr)
-        return False
-
 
 def find_matching_approved_claim(conn, client, title: str, summary: str, category: str, stance: str):
-    """Returns an existing claim id to link a new source to, or None to
-    insert a fresh claim. Two-stage: cheap pg_trgm similarity narrows to
-    a handful of real candidates, then one LLM call per candidate
-    confirms it's actually the same fact before merging -- merging two
-    genuinely different claims under one id would misattribute a
-    citation, which is worse than the duplicate this is trying to avoid,
-    so this stays conservative."""
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(
-            """SELECT id, title, summary, similarity(title, %s) AS sim
-               FROM claims
-               WHERE review_status = 'approved' AND stance = %s AND category = %s
-                 AND similarity(title, %s) > %s
-               ORDER BY sim DESC LIMIT 3""",
-            (title, stance, category, title, MIN_SIMILARITY),
-        )
-        candidates = cur.fetchall()
-
-    for cand in candidates:
-        if _is_same_claim(client, title, summary, cand["title"], cand["summary"]):
-            return cand["id"]
-    return None
+    # category param kept for call-site compatibility, no longer used --
+    # see claim_dedup.py's module docstring for why the category filter
+    # was dropped (it was the root cause of a real missed-duplicate bug).
+    return _find_matching_approved_claim(conn, client, _generate_with_retry, title, summary, stance)
 
 
 def ingest_one_article(conn, registry: dict, url: str, dry_run: bool = False, known_published_at=None, article_data: dict | None = None) -> dict:
@@ -179,9 +117,9 @@ def ingest_one_article(conn, registry: dict, url: str, dry_run: bool = False, kn
                 cur.execute(
                     """INSERT INTO claims
                            (stance, title, summary, category, accomplishment_type, sentiment,
-                            citizen_impact_suggested, event_date_suggested,
+                            citizen_impact_suggested, event_date_suggested, featured,
                             extracted_by, extraction_confidence, review_status)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'gemini_agent', %s, 'pending_review')
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'gemini_agent', %s, 'pending_review')
                        RETURNING id, review_status""",
                     (
                         c["stance"],
@@ -192,6 +130,7 @@ def ingest_one_article(conn, registry: dict, url: str, dry_run: bool = False, kn
                         c["sentiment"],
                         (c.get("citizen_impact_suggested") or "").strip() or None,
                         parse_suggested_date(c.get("event_date_suggested", "")),
+                        c.get("featured", True),
                         c["extraction_confidence"],
                     ),
                 )

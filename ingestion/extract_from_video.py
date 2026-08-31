@@ -247,9 +247,24 @@ RESPONSE_SCHEMA = {
                         "type": "string",
                         "enum": ["high", "medium", "low"],
                         "description": "low if the claim is vague, ambiguous, or you're inferring rather than reading a direct statement"
+                    },
+                    "featured": {
+                        "type": "boolean",
+                        "description": (
+                            "true for genuine government policy, decision, project, budget item, or "
+                            "initiative (or, for opposition_statement, a specific documented allegation "
+                            "about government performance). false for a real, worth-keeping-searchable "
+                            "claim that is nonetheless an isolated incident rather than a policy/decision "
+                            "-- a specific rescue operation, a specific arrest, a routine crime-statistic "
+                            "mention, a ceremonial or social event with no policy content, general human-"
+                            "interest news. Rule of thumb: could this specific fact reasonably be "
+                            "described using one of the four accomplishment_type categories (a completed "
+                            "deliverable, a policy, a strategic commitment, an ongoing program)? If not, "
+                            "it's very likely featured=false, not a stretch to force it into one anyway."
+                        ),
                     }
                 },
-                "required": ["stance", "title", "summary", "category", "accomplishment_type", "sentiment", "citizen_impact_suggested", "event_date_suggested", "start_timestamp", "extraction_confidence"]
+                "required": ["stance", "title", "summary", "category", "accomplishment_type", "sentiment", "citizen_impact_suggested", "event_date_suggested", "start_timestamp", "extraction_confidence", "featured"]
             }
         }
     },
