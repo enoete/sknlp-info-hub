@@ -219,6 +219,13 @@
   color: var(--faint);
   gap: 10px;
 }
+.metaLeft {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
 .meta .src {
   display: flex;
   align-items: center;
@@ -226,8 +233,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
   color: inherit;
   text-decoration: none;
+}
+.corroborated {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--green-ink);
 }
 .meta .src:hover {
   color: var(--red);

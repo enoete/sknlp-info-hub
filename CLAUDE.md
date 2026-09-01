@@ -1529,6 +1529,90 @@ risks introducing a bug into the citation-validation logic that gates
 this product's core credibility promise; worth doing as a real follow-up,
 not rushed in now.
 
+## Scheduled ingestion, backups, and a repeatable scope audit (2026-09-01)
+
+Prompted directly: "do suggestions 1, 2, 4" (from a prior status-report
+turn: set up a scheduler so scraping runs without intervention, set up
+automated DB backups, turn the one-off scope-integrity sweep into a real
+script) — plus a direct question, "what's stopping you from scraping
+winnfm," and an explicit reminder that whatever gets automated must keep
+deduplicating and filtering noise, "we're not trying to be a news
+platform."
+
+**WINN FM wasn't actually blocked.** Both its registry rows (news site,
+YouTube talk shows) were already registered from the original source
+survey. A one-off test run of the news site had already happened
+(10 articles fetched) and worked exactly as intended: 9 of 10 were
+regional/international wire content with zero St. Kitts-Nevis government
+relevance (Iran strikes, the US-Canada trade war, Dolly Parton's funeral,
+an SVG — St. Vincent — government story) and correctly produced ZERO
+claims each; the 1 genuinely relevant story (PM Drew's hospitalization)
+correctly produced 1 claim. The gap was never technical — it just was
+never folded into ongoing scraping, same gap as everything else pre-
+scheduler.
+
+- `ingestion/run_scheduled_discovery.py` — the actual thing a cron job
+  calls. Queries `sources_registry` itself for every eligible row
+  (`status='active'`, not manual-capture-only, a platform this project
+  knows how to discover) instead of a hardcoded list, so a newly
+  registered source is picked up automatically with no script edit
+  needed. Per-source error isolation (one dead feed/changed page
+  doesn't block the rest). Deliberately does NOT reimplement dedup or
+  noise-filtering — both are already structural properties of the
+  underlying write path it calls into (`ingest_one_video()`/
+  `ingest_one_article()`, both of which already call
+  `claim_dedup.find_matching_approved_claim()` before inserting anything,
+  and both of which already write `featured` from the extraction agent's
+  own judgment) — this script only decides which sources to check and
+  how many new items per source (`--max-new`, default 3, deliberately
+  modest since it runs repeatedly, not as a one-off backfill).
+- `scripts/run_scheduled_discovery.sh` — cron entry point, sets up the
+  exact venv/env the ingestion scripts need, logs to
+  `/root/sknlp-info-hub-logs/scheduled_discovery_<date>.log`.
+- **Crontab**: `0 */6 * * *` for discovery, `30 2 * * *` for backup (30
+  min before the droplet's own existing `0 3 * * * shutdown -r`, so a
+  dump is never interrupted mid-write). Both purely additive to the
+  existing crontab (snipe-it's own entries, the reboot) — verified with
+  a diff before installing, nothing else touched.
+- `scripts/backup_db.sh` — `docker compose exec db pg_dump` (runs inside
+  the container so the dump tool version always matches the server,
+  no separate host pg_dump to maintain), gzipped, written to
+  `/root/sknlp-backups` — deliberately OUTSIDE the git repo, a DB dump
+  has no business being version-controlled or swept up by a broad `git
+  add`. 14-day retention (`find -mtime +14 -delete`). Tested once
+  manually before scheduling: valid dump, 476K compressed, 38
+  tables/COPY blocks confirmed present.
+- `ingestion/audit_scope_integrity.py` — finds approved claims with
+  `event_date` outside the administration's term and judges each
+  individually (Gemini) rather than blanket-rejecting on the date alone,
+  since the same signal (a bad date) can mean two different things: the
+  claim itself is genuinely out of scope (reject), or the claim is fine
+  but the date FIELD is wrong (clear it, keep the claim) — exactly the
+  two dispositions the original manual sweep needed the same day.
+  **Real bug caught running this for the first time**: the identical
+  claim ("Jego Armstrong Selected as Speaker for 28th Independence
+  Lecture Series," a real current 2026 SKNIS announcement) got two
+  different verdicts across a dry run and an --apply run of the same
+  prompt — real LLM non-determinism — and the --apply run's REJECT
+  verdict was an actual reasoning error: the model read "28th edition of
+  an annual series" as "founded ~2011, therefore out of scope," wrongly
+  rejecting a real claim. Caught, restored, and fixed the design: as of
+  now **rejection is never auto-applied by this script, even with
+  --apply** — only the low-risk, fully-reversible `clear_date_only`
+  disposition writes automatically; every reject recommendation is
+  always printed for a human to review and act on manually. This is also
+  why the audit script is NOT in the cron rotation — it's a detector
+  plus a safe auto-fix for one specific failure mode, not an unattended
+  auto-moderator. Run it by hand periodically, especially after a large
+  historical backfill.
+- **Dashboard now shows corroboration directly on the card**, prompted
+  directly: "we summarize and state the multiple sources on the entry on
+  the dashboard." `source_count` already existed in `DashboardClaim`
+  (added earlier fixing the join fan-out bug) but was never actually
+  rendered — `DashboardClient.tsx` now shows "documented with N
+  independent sources" next to the citation whenever a claim has more
+  than one, same wording already used on the claim detail page.
+
 ## What can be mocked/stubbed for the demo, what can't
 
 - **Can stub**: the ingestion agent (YouTube/sknis scraping), voice

@@ -107,13 +107,20 @@ export default function DashboardClient({ claims }: { claims: DashboardClaim[] }
               </div>
             )}
             <div className={styles.meta}>
-              <a className={styles.src} href={c.source_url} target="_blank" rel="noreferrer">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                  <path d="M14 2v6h6" />
-                </svg>
-                {c.source_org}
-              </a>
+              <div className={styles.metaLeft}>
+                <a className={styles.src} href={c.source_url} target="_blank" rel="noreferrer">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <path d="M14 2v6h6" />
+                  </svg>
+                  {c.source_org}
+                </a>
+                {c.source_count > 1 && (
+                  <span className={styles.corroborated} title="Multiple independent sources reported this same fact">
+                    &middot; documented with {c.source_count} independent sources
+                  </span>
+                )}
+              </div>
               <span className={styles.date}>{c.event_date ?? 'date unknown'}</span>
             </div>
           </div>
