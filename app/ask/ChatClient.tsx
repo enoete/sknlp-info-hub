@@ -34,6 +34,19 @@ interface ChatMessage {
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
+// Rotates while waiting for /api/ask -- honestly worded, not just
+// "Searching the record…" on a loop. Measured live 2026-09-01: retrieval
+// itself finishes in well under 300ms; nearly all of the 3-11s wait is
+// Claude actually reading the retrieved claims and carefully drafting a
+// grounded answer (deliberately NOT switched to a faster model for this —
+// see CLAUDE.md, accuracy was prioritized explicitly over speed here).
+// The old indicator was a tiny 10.5px debug-styled line, easy to miss and
+// now inaccurate about what's actually taking the time — this replaces
+// it with something visible that sets the right expectation: the wait is
+// the model being careful, not the app being slow or broken.
+const THINKING_PHRASES = ['Searching the record…', 'Reading the matching sources…', 'Drafting a carefully sourced answer…'];
+const THINKING_INTERVAL_MS = 1600;
+
 export default function ChatClient({ suggestions }: { suggestions: string[] }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -44,14 +57,28 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
   // leaves whatever was showing in place rather than clearing it — no
   // suggestion pill is ever shown that wasn't derived from a real claim.
   const [currentSuggestions, setCurrentSuggestions] = useState<string[]>(suggestions);
+  const [thinkingPhraseIdx, setThinkingPhraseIdx] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Runs on every new message AND on the loading flag, so the "Searching
-  // the record…" line and the eventual answer are both scrolled into view
-  // without the person ever having to scroll the log by hand.
+  // Runs on every new message AND on the loading flag, so the thinking
+  // indicator and the eventual answer are both scrolled into view without
+  // the person ever having to scroll the log by hand.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading]);
+
+  // Advances through THINKING_PHRASES while waiting, resetting to the
+  // first phrase at the start of each new question.
+  useEffect(() => {
+    if (!loading) {
+      setThinkingPhraseIdx(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setThinkingPhraseIdx((i) => Math.min(i + 1, THINKING_PHRASES.length - 1));
+    }, THINKING_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [loading]);
 
   async function ask(question: string) {
     if (!question.trim() || loading) return;
@@ -161,7 +188,16 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
               </div>
             )
           )}
-          {loading && <div className={styles.debugLine}>Searching the record…</div>}
+          {loading && (
+            <div className={styles.thinking}>
+              <span className={styles.thinkingDots}>
+                <span />
+                <span />
+                <span />
+              </span>
+              {THINKING_PHRASES[thinkingPhraseIdx]}
+            </div>
+          )}
           <div ref={bottomRef} />
         </div>
 

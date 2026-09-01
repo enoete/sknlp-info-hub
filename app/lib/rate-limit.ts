@@ -1,29 +1,49 @@
-// Basic in-memory per-IP rate limiting for /api/ask. Deliberately simple:
-// this runs as a single long-lived Node process (next start in one
-// container, no serverless/multi-instance replicas), so a module-level Map
-// is a real shared counter, not per-request throwaway state. Would need to
-// move to a shared store (Redis) if this app is ever scaled to >1 instance.
+// Basic in-memory per-IP rate limiting. Deliberately simple: this runs as
+// a single long-lived Node process (next start in one container, no
+// serverless/multi-instance replicas), so a module-level Map is a real
+// shared counter, not per-request throwaway state. Would need to move to
+// a shared store (Redis) if this app is ever scaled to >1 instance.
+//
+// Named limiter instances (not one shared bucket) -- decided 2026-09-01,
+// prompted by a real concern: "the suggestions back-end... could blow up
+// very quick and we need to weed out spam, message bombing." /api/ask's
+// original 10-per-60s limit is reasonable for a chat conversation (a
+// citizen asking several follow-ups quickly is normal); a citizen has no
+// legitimate reason to submit many priority suggestions in a minute, so
+// /api/suggestions gets its own, much stricter limiter -- see
+// SUGGESTION_LIMITER below and citizenSuggestions.ts's submitSuggestion.
 
 interface Bucket {
   count: number;
   resetAt: number;
 }
 
-const WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 10;
+interface LimiterConfig {
+  windowMs: number;
+  maxRequests: number;
+}
 
-const buckets = new Map<string, Bucket>();
+export const ASK_LIMITER: LimiterConfig = { windowMs: 60_000, maxRequests: 10 };
+export const SUGGESTION_LIMITER: LimiterConfig = { windowMs: 10 * 60_000, maxRequests: 3 };
 
-export function checkRateLimit(ip: string): { allowed: boolean; retryAfterSeconds?: number } {
+const bucketsByLimiter = new Map<LimiterConfig, Map<string, Bucket>>();
+
+export function checkRateLimit(ip: string, limiter: LimiterConfig = ASK_LIMITER): { allowed: boolean; retryAfterSeconds?: number } {
+  let buckets = bucketsByLimiter.get(limiter);
+  if (!buckets) {
+    buckets = new Map();
+    bucketsByLimiter.set(limiter, buckets);
+  }
+
   const now = Date.now();
   const bucket = buckets.get(ip);
 
   if (!bucket || now >= bucket.resetAt) {
-    buckets.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    buckets.set(ip, { count: 1, resetAt: now + limiter.windowMs });
     return { allowed: true };
   }
 
-  if (bucket.count >= MAX_REQUESTS_PER_WINDOW) {
+  if (bucket.count >= limiter.maxRequests) {
     return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)) };
   }
 
@@ -31,15 +51,17 @@ export function checkRateLimit(ip: string): { allowed: boolean; retryAfterSecond
   return { allowed: true };
 }
 
-// Lazy sweep so one-off IPs don't accumulate in the map forever.
+// Lazy sweep so one-off IPs don't accumulate in the maps forever.
 const g = globalThis as unknown as { __sknlpRateLimitSweeper?: ReturnType<typeof setInterval> };
 if (!g.__sknlpRateLimitSweeper) {
   g.__sknlpRateLimitSweeper = setInterval(() => {
     const now = Date.now();
-    for (const [ip, bucket] of buckets) {
-      if (now >= bucket.resetAt) buckets.delete(ip);
+    for (const buckets of bucketsByLimiter.values()) {
+      for (const [ip, bucket] of buckets) {
+        if (now >= bucket.resetAt) buckets.delete(ip);
+      }
     }
-  }, WINDOW_MS);
+  }, ASK_LIMITER.windowMs);
   g.__sknlpRateLimitSweeper.unref?.();
 }
 

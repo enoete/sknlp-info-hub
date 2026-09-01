@@ -1,6 +1,6 @@
 import { pool } from './db';
 import { withTimestamp } from './youtube';
-import { findClosestRecord, OppositionRecord } from './oppositionWatch';
+import { findClosestRecord, fetchClaimsAsRecords, OppositionRecord } from './oppositionWatch';
 
 export interface DashboardClaim {
   id: string;
@@ -14,6 +14,7 @@ export interface DashboardClaim {
   source_org: string;
   source_url: string;
   source_type: string;
+  source_count: number;
   // Set when a later approved claim links to this one via
   // completes_claim_id (see schema.sql) -- i.e. this initiative/decision
   // has since been completed. Null means either not yet completed, or no
@@ -37,7 +38,7 @@ export interface DashboardStats {
 // checkmark grid. Opposition statements belong to the (not yet built)
 // Opposition Watch view.
 export async function getDashboardClaims(): Promise<DashboardClaim[]> {
-  const { rows } = await pool.query<DashboardClaim & { source_start_seconds: number | null }>(
+  const { rows } = await pool.query<DashboardClaim & { source_start_seconds: number | null; source_count: string }>(
     `SELECT
        c.id, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
        EXTRACT(YEAR FROM c.event_date)::INT AS year,
@@ -48,20 +49,51 @@ export async function getDashboardClaims(): Promise<DashboardClaim[]> {
         JOIN transcript_segments ts ON ts.id = cts.segment_id
         WHERE cts.claim_id = c.id
         ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds,
+       (SELECT count(*) FROM claim_sources cs2 WHERE cs2.claim_id = c.id) AS source_count,
        done.id AS completed_by_claim_id, done.title AS completed_by_title,
        to_char(done.event_date, 'YYYY-MM-DD') AS completed_by_date
      FROM claims c
-     JOIN claim_sources cs ON cs.claim_id = c.id
-     JOIN sources s ON s.id = cs.source_id
+     -- A claim can have multiple corroborating sources (claim_sources is
+     -- many-to-many -- see the corroboration-linking work in CLAUDE.md's
+     -- "Corroboration and duplicate merging" section). A plain JOIN here
+     -- fanned out one Dashboard card PER LINKED SOURCE for the same
+     -- claim -- confirmed live 2026-08-31: the EC$250 voucher claim (6
+     -- sources) rendered as multiple near-identical cards, one per
+     -- source, even though the underlying claims-table dedup was working
+     -- correctly. This LATERAL join picks exactly one representative
+     -- source per claim for the card's citation, same "most recently
+     -- linked source" tiebreak getClaimById already uses for the claim
+     -- detail page's primary citation -- source_count above still
+     -- reflects the true total.
+     JOIN LATERAL (
+       SELECT s.speaker_org, s.origin_url, s.source_type
+       FROM claim_sources cs
+       JOIN sources s ON s.id = cs.source_id
+       WHERE cs.claim_id = c.id
+       ORDER BY s.created_at DESC
+       LIMIT 1
+     ) s ON true
      LEFT JOIN claims done ON done.completes_claim_id = c.id AND done.review_status = 'approved'
      WHERE c.review_status = 'approved' AND c.stance = 'accomplishment' AND c.featured = true
+       -- Never show a future-dated claim on the curated Dashboard grid --
+       -- confirmed live 2026-09-01, a scheduled-event announcement
+       -- (event_date a week out) and a bad extraction (event_date wrongly
+       -- set to an alleged future deadline mentioned IN a claim's text,
+       -- not when the claim was made) both slipped through. Undated
+       -- claims (NULL) still pass -- this only blocks a real future date,
+       -- never hides the "date unknown" gap this file already tracks.
+       AND (c.event_date IS NULL OR c.event_date <= CURRENT_DATE)
      ORDER BY c.event_date DESC NULLS LAST`
   );
   // Deep-link to the exact moment a claim was said when we have a real
   // timestamp (transcript_segments.start_seconds), falling back to the
   // bare video/document URL otherwise — never guessed, only ever real
   // per-claim data from the ingestion agent.
-  return rows.map((r) => ({ ...r, source_url: withTimestamp(r.source_url, r.source_start_seconds) }));
+  return rows.map((r) => ({
+    ...r,
+    source_url: withTimestamp(r.source_url, r.source_start_seconds),
+    source_count: Number(r.source_count)
+  }));
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -73,15 +105,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     max_year: number | null;
   }>(
     `SELECT
-       count(*) FILTER (WHERE c.stance = 'accomplishment') AS accomplishments,
+       count(DISTINCT c.id) FILTER (WHERE c.stance = 'accomplishment') AS accomplishments,
        count(DISTINCT s.id) AS sources_indexed,
-       count(*) FILTER (WHERE c.stance = 'opposition_statement') AS opposition_claims,
+       count(DISTINCT c.id) FILTER (WHERE c.stance = 'opposition_statement') AS opposition_claims,
        min(EXTRACT(YEAR FROM c.event_date))::INT AS min_year,
        max(EXTRACT(YEAR FROM c.event_date))::INT AS max_year
      FROM claims c
      JOIN claim_sources cs ON cs.claim_id = c.id
      JOIN sources s ON s.id = cs.source_id
-     WHERE c.review_status = 'approved' AND c.featured = true`
+     WHERE c.review_status = 'approved' AND c.featured = true
+       AND (c.event_date IS NULL OR c.event_date <= CURRENT_DATE)`
   );
   const row = rows[0];
   const yearsLabel =
@@ -100,13 +133,20 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 }
 
 // ------------------------------------------------------------
-// Timeline — every approved claim (both stances), ordered by event_date.
-// Undated claims are a real, visible gap (see CLAUDE.md's Dashboard fix
-// notes: ~49 of ~65 approved accomplishments have no event_date from
-// older seed batches) — the client groups them into their own explicit
-// section rather than silently dropping them, so the gap stays visible
-// and closes naturally as a human confirms dates via the Review Queue's
-// event_date_suggested flow, not by hiding the problem.
+// Timeline — accomplishment-stance claims only, ordered by event_date.
+// Decided 2026-09-01, prompted directly: "we dont need a timeline for
+// opposition statements! The timeline is to make the govt look good!" --
+// this view is a curated record of the government's own actions, same
+// framing as the Dashboard, not a neutral claim log (that's what Ask the
+// Record and Opposition Watch are for). Undated claims are a real,
+// visible gap (see CLAUDE.md's Dashboard fix notes: ~49 of ~65 approved
+// accomplishments have no event_date from older seed batches) — the
+// client groups them into their own explicit section rather than
+// silently dropping them, so the gap stays visible and closes naturally
+// as a human confirms dates via the Review Queue's event_date_suggested
+// flow, not by hiding the problem. Future-dated claims are excluded
+// outright, same guard as getDashboardClaims/getDashboardStats above --
+// this project documents what's been done, not a forward calendar.
 // ------------------------------------------------------------
 export interface TimelineClaim {
   id: string;
@@ -124,7 +164,8 @@ export async function getTimelineClaims(): Promise<TimelineClaim[]> {
     `SELECT c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
             to_char(c.event_date, 'YYYY-MM-DD') AS event_date
      FROM claims c
-     WHERE c.review_status = 'approved' AND c.featured = true
+     WHERE c.review_status = 'approved' AND c.featured = true AND c.stance = 'accomplishment'
+       AND (c.event_date IS NULL OR c.event_date <= CURRENT_DATE)
      ORDER BY c.event_date DESC NULLS LAST, c.created_at DESC`
   );
   return rows;
@@ -173,6 +214,8 @@ export interface ClaimDetail {
   source_count: number;
   proof_documents: ClaimProofDocument[];
   closest_record: OppositionRecord | null;
+  // Mirrors OppositionPair.record_source -- see oppositionWatch.ts.
+  closest_record_source: 'manual' | 'auto' | null;
   // See schema.sql's completes_claim_id -- `completes` is the earlier
   // initiative/decision THIS claim fulfills; `completed_by` is the later
   // claim that fulfills THIS one. A claim can have at most one of each.
@@ -182,16 +225,21 @@ export interface ClaimDetail {
 
 export async function getClaimById(id: string): Promise<ClaimDetail | null> {
   const { rows } = await pool.query<
-    Omit<ClaimDetail, 'source_url' | 'proof_documents' | 'closest_record' | 'source_count' | 'completes' | 'completed_by'> & {
+    Omit<ClaimDetail, 'source_url' | 'proof_documents' | 'closest_record' | 'closest_record_source' | 'source_count' | 'completes' | 'completed_by'> & {
       origin_url: string;
       source_start_seconds: number | null;
       source_count: string;
       completes_claim_id: string | null;
+      manual_clarification_id: string | null;
+      manual_clarification_title: string | null;
+      manual_clarification_text: string | null;
+      manual_clarification_url: string | null;
     }
   >(
     `SELECT
        c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.citizen_impact,
-       c.completes_claim_id,
+       c.completes_claim_id, c.manual_clarification_id,
+       c.manual_clarification_title, c.manual_clarification_text, c.manual_clarification_url,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date, c.review_status,
        s.source_type, s.title AS source_title, s.speaker_org, s.speaker_name,
        s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
@@ -222,8 +270,29 @@ export async function getClaimById(id: string): Promise<ClaimDetail | null> {
     [id]
   );
 
-  const closest_record =
-    row.stance === 'opposition_statement' ? await findClosestRecord(row.category, `${row.title} ${row.summary}`) : null;
+  let closest_record: OppositionRecord | null = null;
+  let closest_record_source: 'manual' | 'auto' | null = null;
+  if (row.stance === 'opposition_statement') {
+    if (row.manual_clarification_id) {
+      const manualRecords = await fetchClaimsAsRecords([row.manual_clarification_id]);
+      closest_record = manualRecords.get(row.manual_clarification_id) ?? null;
+      closest_record_source = closest_record ? 'manual' : null;
+    } else if (row.manual_clarification_url) {
+      closest_record = {
+        title: row.manual_clarification_title ?? 'Government clarification',
+        summary: row.manual_clarification_text ?? '',
+        source_type: 'official_govt',
+        source_title: 'Admin-provided source',
+        speaker_org: 'Government (manual entry)',
+        origin_url: row.manual_clarification_url,
+        published_at: null
+      };
+      closest_record_source = 'manual';
+    } else {
+      closest_record = await findClosestRecord(row.category, `${row.title} ${row.summary}`);
+      closest_record_source = closest_record ? 'auto' : null;
+    }
+  }
 
   let completes: LinkedClaim | null = null;
   if (row.completes_claim_id) {
@@ -247,6 +316,7 @@ export async function getClaimById(id: string): Promise<ClaimDetail | null> {
     source_count: Number(row.source_count),
     proof_documents: proofRows,
     closest_record,
+    closest_record_source,
     completes,
     completed_by: completedByRows[0] ?? null
   };

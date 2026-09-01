@@ -127,6 +127,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
         filtered.map((p) => {
           const color = getCategoryColor(p.category);
           const documented = !!p.record;
+          const manual = p.record_source === 'manual';
           return (
             <div className={styles.oppoPair} key={p.id}>
               <div className={styles.oppoHeader}>
@@ -134,8 +135,10 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
                   <span className={styles.catTag} style={{ background: color.tint, color: color.ink }}>
                     {p.category ?? 'Uncategorized'}
                   </span>
-                  <span className={`${styles.statusChip} ${documented ? styles.statusDocumented : styles.statusUndocumented}`}>
-                    {documented ? 'Clarified' : 'No clarification yet'}
+                  <span
+                    className={`${styles.statusChip} ${manual ? styles.statusManual : documented ? styles.statusDocumented : styles.statusUndocumented}`}
+                  >
+                    {manual ? 'Clarified by admin' : documented ? 'Clarified' : 'No clarification yet'}
                   </span>
                 </div>
               </div>
@@ -154,7 +157,7 @@ export default function OppositionWatchClient({ pairs }: { pairs: OppositionPair
 
               {p.record ? (
                 <div className={`${styles.oppoHalf} ${styles.oppoHalfRecord}`}>
-                  <div className={styles.oppoTag}>Clarification</div>
+                  <div className={styles.oppoTag}>{manual ? 'Clarification (confirmed by admin)' : 'Clarification'}</div>
                   <p>{p.record.summary}</p>
                   <div className={styles.metaLine}>
                     {p.record.speaker_org} — {p.record.source_title} &middot;{' '}

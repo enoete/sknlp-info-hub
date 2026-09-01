@@ -212,6 +212,140 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
     }
   }
 
+  // "Clarified by admin" -- two mutually exclusive mechanisms (see
+  // schema.sql's comment): 'search' links an existing ingested claim
+  // (reuses the same /api/claims/search endpoint as the completes-claim
+  // picker above); 'text' lets an admin write the clarification directly
+  // with a source URL, for the much more common case where the real
+  // clarification doesn't already exist as its own claim -- a keyword
+  // search over existing titles won't find a match that was never
+  // ingested, and per the client's own words, "if your LLM could not
+  // find a cogent match, I dont think a human would" either.
+  const [clarifyingClaimId, setClarifyingClaimId] = useState<string | null>(null);
+  const [clarifyMode, setClarifyMode] = useState<'search' | 'text'>('search');
+  const [clarifyQuery, setClarifyQuery] = useState('');
+  const [clarifyResults, setClarifyResults] = useState<ClaimSearchResult[]>([]);
+  const [clarifySearching, setClarifySearching] = useState(false);
+  const [clarifyTitle, setClarifyTitle] = useState('');
+  const [clarifyText, setClarifyText] = useState('');
+  const [clarifyUrl, setClarifyUrl] = useState('');
+  const [clarifySaving, setClarifySaving] = useState(false);
+  const [clarifyError, setClarifyError] = useState<string | null>(null);
+
+  function startClarifying(claimId: string) {
+    setClarifyingClaimId(claimId);
+    setClarifyMode('search');
+    setClarifyQuery('');
+    setClarifyResults([]);
+    setClarifyTitle('');
+    setClarifyText('');
+    setClarifyUrl('');
+    setClarifyError(null);
+  }
+
+  function cancelClarifying() {
+    setClarifyingClaimId(null);
+    setClarifyQuery('');
+    setClarifyResults([]);
+    setClarifyTitle('');
+    setClarifyText('');
+    setClarifyUrl('');
+    setClarifyError(null);
+  }
+
+  async function searchClarify(claimId: string) {
+    if (!clarifyQuery.trim()) {
+      setClarifyResults([]);
+      return;
+    }
+    setClarifySearching(true);
+    try {
+      const res = await fetch(`/api/claims/search?q=${encodeURIComponent(clarifyQuery)}&exclude=${claimId}`);
+      const data = await res.json();
+      setClarifyResults(res.ok ? data.results : []);
+    } catch {
+      setClarifyResults([]);
+    } finally {
+      setClarifySearching(false);
+    }
+  }
+
+  async function saveClarification(claimId: string, clarificationClaimId: string | null, clarificationTitle: string | null) {
+    setClarifySaving(true);
+    setClarifyError(null);
+    try {
+      const res = await fetch(`/api/claims/${claimId}/clarification`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ manual_clarification_id: clarificationClaimId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setClarifyError(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      setClaims((cs) =>
+        cs.map((c) =>
+          c.id === claimId
+            ? {
+                ...c,
+                manual_clarification_id: data.manual_clarification_id,
+                manual_clarification_claim_title: clarificationTitle,
+                manual_clarification_title: null,
+                manual_clarification_text: null,
+                manual_clarification_url: null
+              }
+            : c
+        )
+      );
+      cancelClarifying();
+    } catch (err) {
+      setClarifyError(String(err));
+    } finally {
+      setClarifySaving(false);
+    }
+  }
+
+  async function saveClarificationText(claimId: string, clear = false) {
+    setClarifySaving(true);
+    setClarifyError(null);
+    try {
+      const res = await fetch(`/api/claims/${claimId}/clarification`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(
+          clear
+            ? { manual_clarification_title: null, manual_clarification_text: null, manual_clarification_url: null }
+            : { manual_clarification_title: clarifyTitle.trim(), manual_clarification_text: clarifyText.trim(), manual_clarification_url: clarifyUrl.trim() }
+        )
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setClarifyError(data.error || `Request failed (${res.status})`);
+        return;
+      }
+      setClaims((cs) =>
+        cs.map((c) =>
+          c.id === claimId
+            ? {
+                ...c,
+                manual_clarification_id: null,
+                manual_clarification_claim_title: null,
+                manual_clarification_title: data.manual_clarification_title,
+                manual_clarification_text: data.manual_clarification_text,
+                manual_clarification_url: data.manual_clarification_url
+              }
+            : c
+        )
+      );
+      cancelClarifying();
+    } catch (err) {
+      setClarifyError(String(err));
+    } finally {
+      setClarifySaving(false);
+    }
+  }
+
   // Only ever shows channels actually present in the data (same rule as
   // Dashboard's category pills / Opposition Watch's sector pills) — never
   // a static list of every enum value regardless of whether anything uses it.
@@ -430,6 +564,127 @@ export default function ReviewQueueClient({ claims: initialClaims }: { claims: R
                     </ul>
                   )}
                   {linkError && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{linkError}</div>}
+                </div>
+              )}
+
+              {c.stance === 'opposition_statement' && (
+                <div className={styles.srcLine}>
+                  {c.manual_clarification_id ? (
+                    <>
+                      ✓ Clarified by admin:{' '}
+                      <a href={`/claim/${c.manual_clarification_id}`} target="_blank" rel="noreferrer">
+                        {c.manual_clarification_claim_title ?? 'linked claim'}
+                      </a>{' '}
+                      &middot;{' '}
+                      <span className={styles.editLink} onClick={() => saveClarification(c.id, null, null)}>
+                        unlink
+                      </span>
+                    </>
+                  ) : c.manual_clarification_url ? (
+                    <>
+                      ✓ Clarified by admin (written):{' '}
+                      <a href={c.manual_clarification_url} target="_blank" rel="noreferrer">
+                        {c.manual_clarification_title ?? 'view source'}
+                      </a>{' '}
+                      &middot;{' '}
+                      <span className={styles.editLink} onClick={() => saveClarificationText(c.id, true)}>
+                        remove
+                      </span>
+                    </>
+                  ) : (
+                    <span className={styles.editLink} onClick={() => startClarifying(c.id)}>
+                      add the government's own clarification
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {clarifyingClaimId === c.id && (
+                <div className={styles.editBlock}>
+                  <div className={styles.editActions} style={{ marginBottom: 8 }}>
+                    <button
+                      className={`${styles.btn} ${clarifyMode === 'search' ? styles.btnApprove : ''}`}
+                      onClick={() => setClarifyMode('search')}
+                    >
+                      Link an existing claim
+                    </button>
+                    <button
+                      className={`${styles.btn} ${clarifyMode === 'text' ? styles.btnApprove : ''}`}
+                      onClick={() => setClarifyMode('text')}
+                    >
+                      Write a clarification
+                    </button>
+                  </div>
+
+                  {clarifyMode === 'search' ? (
+                    <>
+                      <input
+                        className={styles.editInput}
+                        value={clarifyQuery}
+                        onChange={(e) => setClarifyQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && searchClarify(c.id)}
+                        placeholder="Search accomplishment claim titles…"
+                        disabled={clarifySaving}
+                      />
+                      <div className={styles.editActions}>
+                        <button className={`${styles.btn} ${styles.btnApprove}`} disabled={clarifySearching} onClick={() => searchClarify(c.id)}>
+                          {clarifySearching ? 'Searching…' : 'Search'}
+                        </button>
+                        <button className={`${styles.btn} ${styles.btnReject}`} disabled={clarifySaving} onClick={cancelClarifying}>
+                          Cancel
+                        </button>
+                      </div>
+                      {clarifyResults.length > 0 && (
+                        <ul className={styles.linkResults}>
+                          {clarifyResults.map((r) => (
+                            <li key={r.id}>
+                              <span className={styles.editLink} onClick={() => saveClarification(c.id, r.id, r.title)}>
+                                {r.title} {r.event_date ? `(${r.event_date})` : ''} — {accomplishmentTypeLabel(r.accomplishment_type)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        className={styles.editInput}
+                        value={clarifyTitle}
+                        onChange={(e) => setClarifyTitle(e.target.value)}
+                        placeholder="Short title, e.g. 'Water infrastructure investment in Cayon'"
+                        disabled={clarifySaving}
+                      />
+                      <textarea
+                        className={styles.editInput}
+                        value={clarifyText}
+                        onChange={(e) => setClarifyText(e.target.value)}
+                        placeholder="What is the government's response to this claim?"
+                        rows={3}
+                        disabled={clarifySaving}
+                      />
+                      <input
+                        className={styles.editInput}
+                        value={clarifyUrl}
+                        onChange={(e) => setClarifyUrl(e.target.value)}
+                        placeholder="Source URL (required) — where can this be verified?"
+                        disabled={clarifySaving}
+                      />
+                      <div className={styles.editActions}>
+                        <button
+                          className={`${styles.btn} ${styles.btnApprove}`}
+                          disabled={clarifySaving || !clarifyUrl.trim()}
+                          onClick={() => saveClarificationText(c.id)}
+                        >
+                          {clarifySaving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button className={`${styles.btn} ${styles.btnReject}`} disabled={clarifySaving} onClick={cancelClarifying}>
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {clarifyError && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{clarifyError}</div>}
                 </div>
               )}
 

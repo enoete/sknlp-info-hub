@@ -98,6 +98,10 @@
   background: var(--green-tint);
   color: var(--green-ink);
 }
+.statusManual {
+  background: var(--gold-tint);
+  color: var(--gold-ink);
+}
 .statusUndocumented {
   background: var(--paper-2);
   color: var(--muted);

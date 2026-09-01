@@ -102,7 +102,9 @@ export default async function ClaimDetailPage({ params }: { params: { id: string
               <h4>Clarification</h4>
               {claim.closest_record ? (
                 <div className={styles.compareBox}>
-                  <span className={styles.compareTag}>Government's side</span>
+                  <span className={styles.compareTag}>
+                    {claim.closest_record_source === 'manual' ? "Government's side — confirmed by admin" : "Government's side"}
+                  </span>
                   <p>{claim.closest_record.title}</p>
                   <a
                     className={styles.compareLink}

@@ -13,8 +13,8 @@ export default async function TimelinePage() {
         <div className={styles.eyebrow}>Official record</div>
         <h1>THE RECORD, IN ORDER</h1>
         <p>
-          Every documented accomplishment and public statement, laid out by the date it actually happened. Click
-          anything for the full citation trail.
+          Every documented action, decision, and initiative from this administration, laid out by the date it
+          actually happened. Click anything for the full citation trail.
         </p>
       </div>
 

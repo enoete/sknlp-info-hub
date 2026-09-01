@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import Nav from './components/Nav';
+import navStyles from './components/nav.module.css';
 
 export const metadata: Metadata = {
   title: 'SKNLP Info Hub',
@@ -42,7 +44,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             />
           </svg>
         </div>
-        <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
+        <div style={{ position: 'relative', zIndex: 1 }} className={navStyles.shell}>
+          <Nav />
+          <div className={navStyles.content}>{children}</div>
+        </div>
       </body>
     </html>
   );

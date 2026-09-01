@@ -1,0 +1,140 @@
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 236px;
+  flex-shrink: 0;
+  background: var(--paper);
+  color: #57534c;
+  padding: 26px 16px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  border-right: 1px solid var(--line);
+}
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 20px;
+  text-decoration: none;
+}
+.pin {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: var(--green-tint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transform: rotate(-8deg);
+}
+.pin svg {
+  width: 14px;
+  height: 14px;
+  color: var(--green-ink);
+}
+.wordmarkTitle {
+  font-family: 'Anton', sans-serif;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+.wordmarkSubtitle {
+  font-size: 10px;
+  color: var(--red-ink);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.navGroup {
+  margin-bottom: 20px;
+}
+.navLabel {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9a968d;
+  padding: 0 10px 8px;
+  font-weight: 600;
+}
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #57534c;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  margin-bottom: 2px;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+}
+.navItem svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+.navItem:hover {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+.navItem.active {
+  background: var(--red);
+  color: #fff;
+}
+.navItem.active svg {
+  opacity: 1;
+}
+/* Internal/admin pages get a visually distinct active state (gold, not
+   red) so it's unmistakable which pages are demo/admin surfaces vs the
+   public site -- requested explicitly: "internal pages with a different
+   color button as this is just the proof of concept." */
+.navItemInternal.active {
+  background: var(--gold);
+  color: var(--ink);
+}
+.internalBadge {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--gold-ink);
+  background: var(--gold-tint);
+  border-radius: 999px;
+  padding: 2px 7px;
+  margin-left: auto;
+}
+.navItem.active .internalBadge {
+  background: rgba(28, 26, 23, 0.15);
+  color: var(--ink);
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: #9a968d;
+}

@@ -11,7 +11,7 @@ export default async function OppositionWatchPage() {
     <main className="max-w-3xl mx-auto px-9 py-12">
       <div className={styles.pageHead}>
         <div className={styles.eyebrow}>Opposition watch</div>
-        <h1>CLAIM, MEET RECORD</h1>
+        <h1>CLAIMS &amp; CLARIFICATIONS</h1>
         <p>
           Statements made publicly against the party, shown next to the closest available
           clarification from the government&apos;s own record. No verdicts — just both, side by side, sourced.

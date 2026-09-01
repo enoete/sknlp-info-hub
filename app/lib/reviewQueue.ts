@@ -13,6 +13,16 @@ export interface ReviewQueueClaim {
   featured: boolean;
   completes_claim_id: string | null;
   completes_claim_title: string | null;
+  manual_clarification_id: string | null;
+  // Derived: the TITLE of the linked claim (when manual_clarification_id
+  // is set), not to be confused with manual_clarification_title below
+  // (the admin's own free-text title, used only for the no-linked-claim
+  // path -- see schema.sql's comment on the two mutually exclusive
+  // clarification mechanisms).
+  manual_clarification_claim_title: string | null;
+  manual_clarification_title: string | null;
+  manual_clarification_text: string | null;
+  manual_clarification_url: string | null;
   sentiment: string | null;
   extraction_confidence: string | null;
   extracted_by: string;
@@ -49,6 +59,8 @@ export async function getReviewQueueClaims(): Promise<ReviewQueueClaim[]> {
        SELECT DISTINCT ON (c.id)
          c.id, c.stance, c.title, c.summary, c.category, c.accomplishment_type, c.featured,
          c.completes_claim_id, (SELECT title FROM claims WHERE id = c.completes_claim_id) AS completes_claim_title,
+         c.manual_clarification_id, (SELECT title FROM claims WHERE id = c.manual_clarification_id) AS manual_clarification_claim_title,
+         c.manual_clarification_title, c.manual_clarification_text, c.manual_clarification_url,
          c.sentiment,
          c.extraction_confidence, c.extracted_by, c.review_status,
          c.citizen_impact,
@@ -235,6 +247,78 @@ export async function updateCompletesClaim(
     `UPDATE claims SET completes_claim_id = $2 WHERE id = $1
      RETURNING id, completes_claim_id`,
     [claimId, completesClaimId]
+  );
+  return rows[0] ?? null;
+}
+
+// Links an opposition_statement claim to the accomplishment claim an
+// admin has manually confirmed IS the government's own clarification --
+// pass null to unlink. Manual only, same posture as updateCompletesClaim
+// above: an admin searches for and picks the claim (searchAccomplishmentClaims
+// below). Deliberately doesn't check c.stance here (mirrors
+// updateCompletesClaim's own lack of a stance guard) -- the review queue
+// UI only ever shows this control for opposition_statement claims, and
+// the FK/self-reference check is the real DB-level guarantee. Clears the
+// free-text clarification fields below when linking a claim -- the two
+// mechanisms are mutually exclusive, see schema.sql's comment.
+export async function updateManualClarification(
+  claimId: string,
+  clarificationClaimId: string | null
+): Promise<{ id: string; manual_clarification_id: string | null } | null> {
+  if (clarificationClaimId === claimId) {
+    throw new ValidationError('A claim cannot be its own clarification');
+  }
+  const { rows } = await pool.query<{ id: string; manual_clarification_id: string | null }>(
+    `UPDATE claims
+     SET manual_clarification_id = $2,
+         manual_clarification_title = CASE WHEN $2::uuid IS NULL THEN manual_clarification_title ELSE NULL END,
+         manual_clarification_text = CASE WHEN $2::uuid IS NULL THEN manual_clarification_text ELSE NULL END,
+         manual_clarification_url = CASE WHEN $2::uuid IS NULL THEN manual_clarification_url ELSE NULL END
+     WHERE id = $1
+     RETURNING id, manual_clarification_id`,
+    [claimId, clarificationClaimId]
+  );
+  return rows[0] ?? null;
+}
+
+export interface ManualClarificationText {
+  id: string;
+  manual_clarification_title: string | null;
+  manual_clarification_text: string | null;
+  manual_clarification_url: string | null;
+}
+
+// The lighter-weight path: an admin writes the clarification directly
+// (title + body + a source URL) rather than linking an existing ingested
+// claim -- decided 2026-09-01, prompted directly: "the search to link
+// for a clarification is searching for keywords and to be honest, if
+// your LLM could not find a cogent match, I dont think a human would...
+// leave the option for manual clarification, with the option to add a
+// URL pointing to where they can get the proof." Pass all three null to
+// clear. Still citation-gated at the application layer, not the DB --
+// url is required whenever title/text are non-empty (never bare
+// unsourced text), enforced here rather than a CHECK constraint so a
+// clearer error message reaches the admin. Clears manual_clarification_id
+// -- the two mechanisms are mutually exclusive, see schema.sql's comment.
+export async function updateManualClarificationText(
+  claimId: string,
+  title: string | null,
+  text: string | null,
+  url: string | null
+): Promise<ManualClarificationText | null> {
+  const hasContent = !!(title || text || url);
+  if (hasContent && !url) {
+    throw new ValidationError('A source URL is required for a manual clarification -- never publish unsourced text');
+  }
+  const { rows } = await pool.query<ManualClarificationText>(
+    `UPDATE claims
+     SET manual_clarification_id = NULL,
+         manual_clarification_title = $2,
+         manual_clarification_text = $3,
+         manual_clarification_url = $4
+     WHERE id = $1
+     RETURNING id, manual_clarification_title, manual_clarification_text, manual_clarification_url`,
+    [claimId, title || null, text || null, url || null]
   );
   return rows[0] ?? null;
 }

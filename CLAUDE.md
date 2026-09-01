@@ -591,6 +591,62 @@ now reinforced in both `chatbot_system_prompt.md` and
   as PAM's registry row — an official party channel, not independent
   commentary), `tier = 'third_party'`, `detection_method = 'public_rss'`.
 
+## Opposition historical backfill (built 2026-08-31)
+
+Prompted directly: "the opposition claims... is very skant... beef that
+up with real facts and records." Real gap confirmed before building
+anything: every opposition-side channel (Talk SKN, Straight Talk, PLP,
+and PAM — never even checked once, `last_checked_at` was null) had only
+ever been discovered via `run_channel_discovery.py`'s RSS path, which
+YouTube caps at the ~15 most recent uploads — there was no equivalent of
+ZIZ's own historical backfill on the opposition side at all.
+
+- `ingestion/run_channel_historical_backfill.py` — new script,
+  generalizes the one-off approach used for ZIZ's backlog into a
+  reusable tool: walks a channel's full upload history back to the Aug 5
+  2022 scope cutoff via `discover_channel.find_historical_candidates()`,
+  then runs up to `--limit` of the discovered candidates through the
+  existing `ingest_one_video()` write path (same `pending_review`-only
+  safety guarantee as everything else). `--max-pages` bounds how deep
+  the discovery walk goes independent of how many actually get sent to
+  Gemini this run — lets a large channel's history be sized cheaply
+  (title + position only, no per-video fetch) before committing to the
+  expensive part.
+- **Real bug found and fixed in `discover_channel.find_historical_candidates()`
+  before this could be trusted**: its scope-cutoff detection relies on
+  parsing dates out of video titles, guarded by a "don't trust an
+  implausible jump" check originally written for a real ZIZ title typo
+  (a stray "January 14, 2022" sitting between two January 2023 uploads).
+  That guard was symmetric — it rejected a big jump in EITHER direction
+  — which is wrong for a walk that's newest-to-oldest by construction:
+  a large *backward* jump is completely normal (a channel that goes
+  months between uploads), only a *forward* jump (a date newer than the
+  running anchor) is a real anomaly. Confirmed live: PLP's channel
+  walked all the way back through 2022 campaign-rally uploads without
+  the scope-cutoff check ever engaging, because the old symmetric guard
+  kept discarding every correctly-ordered older date as "implausible,"
+  leaving the anchor stuck near its first (often noisy) value. Fixed by
+  only rejecting forward jumps (`parsed > last_confirmed_date + 3 days`
+  tolerance); reverified afterward — PLP now correctly stops at "Crossed
+  scope cutoff at 2022-08-04." Talk SKN's titles carry no dates at all
+  (0 of 66 candidates parsed a date) — the cutoff check simply can't
+  engage there either way, so that channel leans entirely on Gemini's
+  own extraction-time scope rule as the backstop (see "Stance
+  misattribution bug" above — already proven live to correctly reject
+  out-of-scope content on its own).
+- Launched detached (`setsid nohup ... & disown`, per the rule below)
+  against all four opposition-side channels 2026-08-31: Talk SKN
+  (`--limit 30 --max-pages 5`, small channel, fully covers its 66-video
+  history), Straight Talk (`--limit 25 --max-pages 60`, longer-running
+  channel, doesn't reach 2022 within even 300 candidates/6 pages — this
+  run only makes a dent, not a full catch-up), PLP (`--limit 25
+  --max-pages 5`, fully covers its 67 in-scope candidates), PAM
+  (`--limit 25 --max-pages 5`, first-ever discovery run against this
+  channel, 173 total videos). Straight Talk in particular will need
+  several more deliberate runs to reach all the way back to Aug 2022,
+  same "several runs, not one unbounded sweep" pacing as ZIZ's own
+  backlog.
+
 ## Detached long-running ingestion processes — survive session disconnects
 
 `run_batch.py`/`run_channel_discovery.py` calls that are expected to run
@@ -709,6 +765,10 @@ built, not from memory. Two valid states only:
 | `claims.accomplishment_type` (sub-classification within `stance='accomplishment'` — see "Accomplishment sub-typing" below) | ✅ Migrated | 2026-08-31 |
 | `claims.completes_claim_id` (self-ref, links a later claim to the earlier initiative/decision it completes — see "Initiative follow-through tracking" below) | ✅ Migrated | 2026-08-31 |
 | `transcript_segments.speaker_name_at_time` (the actual named individual per claim, distinct from `speaker_title_at_time`'s role — see "Named opposition speaker filtering" below) | ✅ Migrated | 2026-08-31 |
+| `claims.featured` (curated-view flag, independent of `review_status` — see "Curated-view noise filtering" below) | ✅ Migrated | 2026-08-31 |
+| `suggestion_themes`, `citizen_suggestions`, `suggestion_acknowledgements` (tables) — see "Suggest a Priority" below | ✅ Migrated | 2026-08-31 |
+| `claims.manual_clarification_id` (admin-linked clarification claim) | ✅ Migrated | 2026-08-31 |
+| `claims.manual_clarification_title`, `_text`, `_url` (admin-written clarification — see "UI overhaul, demo-readiness cleanup" below) | ✅ Migrated | 2026-09-01 |
 
 One-time full audit completed 2026-08-31, prompted by the `chat_queries`
 gap: every table and column in `schema.sql` cross-checked
@@ -839,6 +899,71 @@ Root-cause fix in `extract_from_video.py` (not just a data patch):
   cases, so this is a display-only nit on the timestamp citation, not a
   factual/stance error — lower priority than the two bugs above but
   worth a closer look if it recurs.
+
+**Correction, 2026-08-31, later same day**: case 1's fix above was
+itself too broad, caught live by the person who commissioned this
+project spot-checking the Dashboard directly ("you need to be careful
+about what is pegged as an accomplishment... this does not belong",
+pointing at "Alleged $14 Million Dirt Management Cost at Basseterre High
+School" — Konris Maynard alleging the *previous* administration wasted
+$14M without building a functional school). Case 1's original fix
+reclassified ANY "current minister criticizing a previous administration"
+statement to `accomplishment`, using almost this exact scenario as its
+own justifying example ("the PM alleging the prior government
+mismanaged a project"). That's wrong: a bare allegation about what the
+PREVIOUS administration itself spent, built, or decided is still solely
+about the previous administration's own record — regardless of who
+currently holds office and says it — and belongs excluded per the
+CRITICAL SCOPE RULE, not accomplishment. The distinction that actually
+matters: does the claim describe the CURRENT government's own resulting
+action (an audit ordered, a law amended, funds recovered), with history
+as context — or is the claim itself just "X was spent/built/decided
+under the previous government," with no current action attached? Only
+the former is legitimately accomplishment-side.
+
+- **Cheap audit signal**: every one of these misclassified claims had
+  `accomplishment_type IS NULL` — the classifier itself apparently
+  couldn't honestly fit them into any of the four real categories, which
+  in hindsight was the tell. Queried all `stance='accomplishment'`
+  claims (approved + pending) with `accomplishment_type IS NULL` — a
+  small, cheap set (11 claims) — and judged each individually
+  (title/summary/citizen_impact) against the corrected test above rather
+  than reapplying a blanket rule. Rejected 4 (two Basseterre High School
+  "prior government wasted $X" claims including the one flagged live,
+  a "previous administration's Poverty Alleviation enrollment" claim, a
+  "criticism of the previous administration's 2022 water budget cut"
+  claim — all pure narrations of the prior administration's own
+  spending/decisions with no current-government action described).
+  Kept and assigned a real `accomplishment_type` to the other 7 — genuine
+  current-government content that simply hadn't been typed yet (COVID
+  travel restrictions lifted, the FOI Act's dormant 2018 law finally
+  activated by current amendments, the $400M geothermal cost estimate,
+  land double-booking audits/disclosures, the Development Bank
+  unaccounted-cash finding — each of these describes a CURRENT action,
+  even where a historical failure is the context). One of the 7
+  ("Immediate Closure of Irish Town Primary School") is legitimately a
+  current-government action but reactive/isolated, not a policy win —
+  kept as `accomplishment` stance (correct) but set `featured = false`
+  (see "Curated-view noise filtering" above) rather than forced into a
+  stance/scope box it doesn't belong in either.
+- **Root-cause fix**: `extract_from_video.py`'s `candidate_claims` scope
+  rule and `stance` field description both rewritten to explicitly say
+  this exclusion applies with equal force to a CURRENT official's own
+  words, using this exact Basseterre High School example as the
+  documented counter-example so it can't recur the same way twice.
+  Added a concrete self-check for the model: if the only honest
+  `accomplishment_type` for a claim would be none of the four real
+  categories, that's itself a signal the claim is out-of-scope, not an
+  accomplishment with a blank type. `extract_from_article.py` got the
+  matching (shorter) correction for the same reason.
+- **Not yet done**: a full comprehensive pass across every
+  `accomplishment`-stance claim (not just the `accomplishment_type IS
+  NULL` subset) for this same pattern, once the concurrent ingestion
+  backlog (ZIZ historical batch, opposition discovery) settles down —
+  the NULL-type signal caught the clearest cases cheaply, but a claim
+  could in principle have been assigned a plausible-but-wrong
+  `accomplishment_type` and not surface this way. Flagged here, not
+  silently assumed complete.
 
 ## Accomplishment sub-typing (`claims.accomplishment_type`)
 
@@ -1002,10 +1127,407 @@ already established.
 - **Not yet built**: the sitemap-based historical backfill (above);
   applying the same text-extraction pipeline to WINN FM/Freedom FM/ZIZ's
   news sites (same WordPress/RSS shape, untested against them
-  specifically); extending corroboration-linking's `find_matching_approved_claim()`
-  to the video pipeline too (currently SKNIS-only, since that's what was
-  asked for — a YouTube video and an SKNIS article reporting the same
-  announcement would still create two separate claims today).
+  specifically).
+  **Update 2026-08-31, same day**: corroboration-linking is no longer
+  SKNIS-only — see "Corroboration and duplicate merging" below, which
+  wires `find_matching_approved_claim()` into the video pipeline
+  (`run_ingestion.py`) too, prompted by a real 4-way duplicate (the
+  EC$250 back-to-school voucher, fragmented across Talk SKN, Straight
+  Talk, and two SKNIS articles) that the SKNIS-only version couldn't
+  have caught since two of the four sources were video.
+
+## Chatbot objectivity — richer synthesis, plus a narrow contradiction exception (decided 2026-08-31)
+
+Prompted directly: "can the chatbot be objective also? as in, taking in
+all context and give an informed answer, as opposed to just what it does
+now?" This runs straight into the product's own "never render a verdict"
+rule (see "Non-negotiable rules" below), so the answer isn't a redesign —
+it's two additive, carefully scoped changes, confirmed with the user
+before building ("I think a mixture of both 1 and 2 works. When it's
+HEAVILY leaning on a side, it can be option 2, after providing richer
+synthesis."):
+
+1. **Richer synthesis, always on.** `retrieve()`'s `LIMIT` went from 3 to
+   5, and the `ANSWER_TOOL` schema's `summary` field description loosened
+   from "1-2 sentences" to allow more when genuinely synthesizing
+   multiple relevant retrieved claims — the model should use everything
+   relevant in context, not just echo the single closest match.
+2. **A narrow, symmetric, evidence-based contradiction exception —
+   system-prompt rule 3c.** Deliberately biased toward *not* invoking it:
+   only for a direct, specific, checkable factual contradiction between
+   two retrieved rows (e.g. a claimed date vs. a documented different
+   date), never a "who's more credible" characterization, and applies
+   identically regardless of which side (accomplishment or
+   opposition_statement) is contradicted — this is what keeps it from
+   becoming a backdoor verdict mechanism. Written into both
+   `app/api/ask/system-prompt.ts` and `chatbot_system_prompt.md` (kept in
+   sync, as always).
+3. **The 'related' cross-reference note.** `retrieve.ts`'s
+   `findRelatedRecordsForOpposition()` tags a category-matched-but-not-
+   keyword-matched clarification row `match_type: 'related'`; the context
+   block now explicitly flags this to the model so it's never mistaken
+   for a row the user's own words actually matched — same "clarification,
+   not confirmation" posture as Opposition Watch's own pairing logic.
+
+**Not yet live-tested against a real contradiction**: no genuine
+factual-contradiction pair existed in the corpus at implementation time
+(checked specifically for a Marriott-loan "without approval" case and
+found none) — rule 3c is implemented defensively but unverified against
+real data. Test it against a real case the first time one shows up in the
+corpus, rather than assuming it works as designed.
+
+## Corroboration and duplicate merging — now cross-pipeline (decided 2026-08-31)
+
+Prompted directly, with a concrete example: "You also need to watch for
+duplicate entries. When context looks identical or closely matching,
+please combine and add the various sources that it's coming from" — the
+EC$250 Back to School Voucher Initiative existed as **four** separate
+claims (Talk SKN, Straight Talk, two SKNIS articles) instead of one claim
+with four `claim_sources` rows. Two distinct root causes, both fixed:
+
+1. **The video pipeline never checked for an existing match at all** —
+   only `run_article_ingestion.py` called `find_matching_approved_claim()`.
+   `run_ingestion.py` now calls it too, before inserting each candidate
+   claim; a match links the new source to the existing claim instead of
+   creating a duplicate.
+2. **The matching function itself was too strict** —
+   `find_matching_approved_claim()` originally required an exact
+   `category` match before even comparing two claims, so the same real
+   fact tagged "Education" by one extraction pass and "Social Protection"
+   by another was never compared at all. Fixed by dropping the category
+   filter (stance is still required) and comparing `title || ' ' ||
+   summary` combined rather than title alone — pulled the shared logic
+   into `ingestion/claim_dedup.py` so both pipelines use the identical
+   function, not two copies that can drift.
+
+The EC$250 cluster itself was merged manually (canonical claim now has 6
+sources after also catching a couple of near-duplicates in the same
+sweep). **Retroactive backfill for everything else ingested before this
+fix**: `ingestion/backfill_dedup.py` — same two-stage pattern
+(`pg_trgm` `similarity()` pre-filter, then one LLM call per candidate
+pair confirming it's genuinely the same specific fact, not just the same
+topic/institution) applied all-pairs across the whole approved-claims
+table instead of one-new-claim-against-a-few-candidates. Needed its own
+higher threshold, `BULK_MIN_SIMILARITY = 0.45` — reusing the live path's
+`MIN_SIMILARITY = 0.2` against every pair of ~600 approved claims
+produced 11,550 candidate pairs (confirmed empirically before this script
+existed: genuine duplicate clusters score ≥0.45 on this metric; below
+that is normal topical overlap between genuinely distinct claims, not a
+duplicate signal). Run 2026-08-31: 53 candidate pairs at the 0.45
+threshold, 32 confirmed as genuine duplicates and merged (keeping the
+older claim, by `created_at`, as canonical; the newer one's
+`claim_sources`/`claim_transcript_segments` rows are relinked, never
+dropped, then it's set `review_status = 'rejected'` — no source or
+citation is ever deleted, only consolidated onto one claim).
+
+## Curated-view noise filtering (`claims.featured`, decided 2026-08-31)
+
+Prompted directly: "we also need to do a site-wide audit and make sure
+we're not importing noise and generic news items. We need to focus on
+government-centered stuff. Rescuing people from a sinking ship is good.
+Arresting people, etc... not for this initiative... Some of the stuff can
+be used to answer chatbot-related questions right? But some of them just
+do not need to be front facing." Two real constraints in tension: the
+corpus needed to stay searchable (a rescue, an arrest, a crime statistic
+is still a real fact someone might ask the chatbot about) while the
+curated public views needed to stay focused on actual government
+policy/delivery, not read as "a glorified news site."
+
+Resolved as two independent axes rather than one, deliberately not
+reusing `review_status` for this: `review_status` still gates whether a
+claim is real/public/citable at all; `claims.featured BOOLEAN NOT NULL
+DEFAULT true` gates only whether it appears in the *curated* browsing
+views. `getDashboardClaims()`, `getTimelineClaims()`, and
+`getDashboardStats()` all gained `AND c.featured = true`; Ask the Record
+(`retrieve.ts`) and Opposition Watch (`oppositionWatch.ts`) do **not**
+filter on it — both continue to search/surface every approved claim
+regardless of `featured`, which is the whole point (a ferry rescue is
+appropriately absent from the Dashboard grid but still a correct answer
+if someone directly asks the chatbot about it).
+
+- Written directly by the ingestion agent going forward (`extract_from_video.py`
+  and `extract_from_article.py`'s `RESPONSE_SCHEMA` both gained a
+  `featured` field with explicit true/false guidance — the rule of thumb
+  is whether the claim fits one of the four `accomplishment_type`
+  categories; if not, it's very likely noise, not front-page material).
+- **Retroactive backfill**: `ingestion/backfill_featured.py`, same
+  batched-Gemini-classification pattern as the other backfill scripts.
+  Dry run against the 588 pre-existing approved claims proposed 111
+  `featured=false`. **Spot-checked against the DB before applying** and
+  found the classifier's own stated rule of thumb was violated on a
+  handful of items — most notably three genuine water-infrastructure
+  claims (Newton Ground/Saddlers/Cayon well drilling) that already
+  carried a real `accomplishment_type` of 'Ongoing Initiative'/
+  'Accomplishment' in the DB, and which CLAUDE.md itself already cites
+  elsewhere as real government delivery content (the well-drilling
+  initiative used as Cayon water-shortage clarification context) — plus
+  two more (the ASPIRE student-savings match, diversionary-caution
+  digital-framework training) that are real named government programs,
+  not isolated incidents. These five were corrected back to
+  `featured = true` by hand after applying the backfill; the remaining
+  ~106 (tourism/passenger-arrival statistics, crime/homicide stats,
+  ceremonial and diplomatic events, awards, funerals, the Apple Syder
+  ferry rescue) matched the intended noise definition and were left
+  `featured = false`. Worth another look if the same pattern (a
+  claim already carrying a real `accomplishment_type` gets proposed
+  `featured=false` anyway) recurs at volume — the classifier's
+  narrow-specific-headline style ("175 Gallons Per Minute") appears to
+  read as similar in *form* to the isolated-incident examples
+  (a rescue, an arrest) even when the underlying content is a genuine
+  policy delivery, which is the actual distinction that matters.
+- Review Queue (`ReviewQueueClient.tsx`) got a checkbox alongside every
+  accomplishment/opposition claim so an admin can correct this call at
+  any time without unapproving the claim, same "editable after the fact"
+  posture as `accomplishment_type`.
+
+## Suggest a Priority (built 2026-08-31)
+
+Prompted directly: a public anonymous suggestion box ("what do you want
+to see from the labour government") plus a structured admin-side review
+workflow — grouping similar submissions even when worded completely
+differently, surfacing the most-mentioned ones, and letting an official
+acknowledge one with a comment "for further consideration." This extends
+`design-reference/source-manager-mockup.html`'s already-sketched "Suggest
+a Priority" / "Trending Suggestions" sections rather than starting from
+scratch — those were speced but never built (see "Design reference"
+above).
+
+- **Schema**: `citizen_suggestions` (raw anonymous text, one row per
+  submission, never edited), `suggestion_themes` (the cluster several
+  submissions can share — label, category, status), and an append-only
+  `suggestion_acknowledgements` (same posture as `audit_log` — a real
+  attributable administrative action, never silently overwritten).
+  Deliberately no IP/session/identity column anywhere in this group —
+  same explicit anonymity promise already made for `chat_queries`, and
+  the rate-limit check on the public submit endpoint uses the IP only as
+  an in-memory key (`app/lib/rate-limit.ts`), never persisted.
+- **Public page**: `/suggest` (`app/suggest/`) — anonymous textarea,
+  500-char cap, rate-limited. **Admin page**: `/source-manager/suggestions`
+  (`app/source-manager/suggestions/`) — themes ranked by mention count
+  (the "most pressing" signal requested), each expandable to show sample
+  raw submissions and an acknowledge form (name + comment → flips theme
+  to `under_consideration`, logs the acknowledgement). Linked from the
+  main Source Manager page; no site-wide nav exists yet to also link it
+  from the public side (see CLAUDE.md's Design reference note that nav
+  is only in the mockup so far), so `/suggest` isn't discoverable from
+  anywhere in the live app yet — worth a real nav entry before the demo.
+- **Tagging**: reuses the existing claims `CATEGORIES` taxonomy
+  (`app/lib/categories.ts`, mirrored from `ingestion/extract_from_video.py`)
+  rather than a second taxonomy to maintain — "childcare"/"social
+  program" asks land under `Social Protection`, which already existed.
+- **Clustering, and two real bugs found testing it live**: classification
+  + clustering happens live per submission (Claude Haiku, tool-use,
+  `app/lib/citizenSuggestions.ts`), not a periodic batch job. First
+  attempt reused claim_dedup.py's exact two-stage pattern (pg_trgm
+  pre-filter, then one LLM same-theme call) — wrong tool for this job,
+  confirmed by seeding real mock submissions and inspecting the result:
+  "We need more job programs for young people who just finished school"
+  and "Youth unemployment is a real problem, please create more
+  internship opportunities" scored too low on `similarity()` to even
+  reach the LLM judgment, landing as two separate themes for the same
+  ask — unlike claim titles/summaries, which usually share verbatim
+  entity names or dollar figures, two citizens paraphrasing the same
+  wish in their own words often share almost no literal substrings.
+  Fixed by dropping the trigram pre-filter entirely for this feature and
+  scanning the `THEME_SCAN_LIMIT` (15) most recently active themes
+  directly with the LLM — affordable at the low-to-moderate volume this
+  feature will actually see. **Second bug, found in the same test
+  pass**: with the pre-filter gone, the LLM's same-theme judgment turned
+  out to be too permissive in the other direction — "childcare is
+  unaffordable," "housing is unaffordable," and "cost of living is too
+  high" all merged into one theme, because they share a broad problem
+  area even though they're different specific asks. Fixed by rewriting
+  `SAME_THEME_TOOL`'s description to explicitly require the same
+  *specific* ask, not just the same general problem area, naming this
+  exact failure case directly in the prompt. Re-seeded and reverified
+  after each fix: 20 realistic mock submissions across 14 themes,
+  correctly separating childcare/housing/food-price/general-cost-of-
+  living into distinct themes while still merging true duplicates (two
+  independently-worded youth-unemployment submissions, two independently-
+  worded rural-broadband submissions, etc.) — spot-checked by hand, not
+  assumed from the code.
+- **Mock data**: seeded through the real `/api/suggestions` endpoint
+  (not hand-inserted rows), so it exercises the actual classification/
+  clustering path — 20 submissions via `curl` with synthetic
+  `X-Forwarded-For` values to spread them across the per-IP rate limit,
+  same way distinct real citizens would. Not committed as a script;
+  re-run similarly if the demo data needs regenerating. Truncate all
+  three tables first if reseeding (`TRUNCATE suggestion_acknowledgements,
+  citizen_suggestions, suggestion_themes;`) since clustering is stateful
+  across the existing corpus.
+- **Not yet built**: real admin auth (the acknowledge form takes a free-
+  text official name, same maturity level as the rest of this app's
+  admin surfaces — no `admin_users` wiring anywhere yet); a public nav
+  link to `/suggest`; multiple acknowledgement rounds aren't specially
+  surfaced beyond a chronological list (fine at this volume, revisit if
+  a theme accumulates many).
+
+## UI overhaul, demo-readiness cleanup, and a second clarification path (2026-09-01)
+
+Prompted by a live product review with the person who commissioned this
+project, ahead of an end-of-week demo. Several distinct decisions, each
+noted below.
+
+**Free-text manual clarification, alongside the existing link-an-existing-
+claim path.** Real objection raised directly: "the search to link for a
+clarification is searching for keywords and to be honest, if your LLM
+could not find a cogent match, i dont think a human would." Most real
+government clarifications won't already exist as their own ingested
+claim, so requiring one was too narrow. `claims.manual_clarification_title`
+/ `_text` / `_url` (all TEXT, nullable) let an admin write the
+clarification directly with a source URL as the citation — still never
+bare unsourced text (`url` required whenever title/text are set,
+enforced in `reviewQueue.ts`'s `updateManualClarificationText`), still
+never bypassing the "everything traces to a real source" rule, just a
+lighter-weight source (a URL) than a full ingested claim. Mutually
+exclusive with `manual_clarification_id` per claim (setting one clears
+the other) so there's never ambiguity about which clarification is
+live. Same "Clarified by admin" tag and same priority-over-auto-match
+posture in `oppositionWatch.ts`/`claims.ts`/`retrieve.ts` as the
+existing linked-claim path. The chatbot path (`retrieve.ts`) had a real
+bug here: a synthetic non-UUID id (`manual:<claim-id>`) for the written-
+clarification case would have crashed `logChatQuery`/`getFollowUpQuestions`
+(both expect a real `claims.id` UUID) — fixed in `app/api/ask/route.ts`
+by only passing a real claim id downstream when the matched citation
+actually has one.
+
+**Scope-integrity sweep, prompted directly**: "we dont need anything in
+the future...2028 is marked as a date for something, even in the
+timeline!" Found and fixed two distinct bugs, both worth tracking since
+they recur as more content gets backfilled:
+- A future `event_date` on the curated Dashboard/Timeline: one genuine
+  extraction bug (an opposition claim's `event_date` was set to a future
+  deadline *mentioned in* the claim's text — "phase out CBI by June 1,
+  2028" — not when the claim was actually made) and one legitimate
+  future-scheduled-event announcement. Both now excluded via a
+  `(c.event_date IS NULL OR c.event_date <= CURRENT_DATE)` guard added
+  to `getDashboardClaims`/`getDashboardStats`/`getTimelineClaims` — this
+  project documents what's been done, not a forward calendar.
+- Manually swept for the OTHER direction too (event_date before this
+  administration's Aug 5 2022 start) while investigating why the
+  Dashboard's "years covered" stat read 2005–2026 instead of 2022–2026.
+  Found and rejected 3 genuine scope violations that had slipped past
+  the extraction-time CRITICAL SCOPE RULE (a 2005 Marriott Hotel jobs
+  claim quoting Denzil Douglas describing pre-Team-Unity events, a 2019
+  Team-Unity-era cannabis decriminalization claim, a May 2022 conference
+  hosted before the Aug 5 cutoff) and corrected one date-field bug (a
+  claim citing a "2010 WIPO study" had the *study's* year in
+  `event_date` instead of when the citing minister actually spoke —
+  nulled, not rejected, since the claim itself is legitimately about a
+  current minister's statement). **Not yet done**: this was a manual
+  one-off sweep (`WHERE event_date < '2022-08-05'`), not a repeatable
+  script — worth turning into one and re-running periodically as the
+  opposition-side historical backfills (Straight Talk especially, which
+  hasn't reached 2022 yet) keep adding older content.
+
+**Timeline is accomplishment-stance only now.** Prompted directly: "we
+dont need a timeline for opposition statements! The timeline is to make
+the govt look good!" `getTimelineClaims()` gained `AND c.stance =
+'accomplishment'` — Ask the Record and Opposition Watch remain the
+neutral, both-sides surfaces; the Timeline (like the Dashboard) is
+explicitly the government's own curated record, not a neutral claim log.
+
+**Dashboard stat renamed.** "752 Documented accomplishments" was
+misleading — the count includes Policy Decisions, Strategic Decisions,
+and Ongoing Initiatives, not just completed accomplishments (see
+"Accomplishment sub-typing" above). Relabeled "Documented actions &
+decisions" in `app/page.tsx`.
+
+**Suggestions backend hardening**, prompted directly: "the suggestions
+back-end will need some refining as it could blow up very quick and we
+need to weed out spam, message bombing, etc." Two changes:
+1. `app/lib/rate-limit.ts` now supports named limiter configs instead of
+   one shared bucket — `/api/ask` keeps its original 10-per-60s
+   (reasonable for a chat conversation's follow-ups), `/api/suggestions`
+   gets a dedicated, much stricter `SUGGESTION_LIMITER` (3 per 10 min per
+   IP) since a citizen has no legitimate reason to submit several
+   priority suggestions in quick succession.
+2. `citizenSuggestions.ts`'s classification call now also moderates in
+   the same pass (one call, not two) — `is_genuine_suggestion` rejects
+   spam, advertising, gibberish, and abuse, throwing a new `ModerationError`
+   that `app/api/suggestions/route.ts` returns as a 422 with the model's
+   own short reason. Deliberately fails OPEN (submission proceeds
+   unclassified/unclustered) on a transient LLM error, same posture as
+   classification always had — an API hiccup should never make the
+   public submission box appear broken, and a rare piece of spam
+   slipping through during an outage is a smaller cost than blocking all
+   legitimate citizen input. **Not a complete anti-abuse system** — no
+   CAPTCHA, no cross-IP duplicate-content detection; good enough for a
+   demo at expected volume, flagged here rather than assumed sufficient
+   if this ever goes to real public traffic.
+
+**Site-wide navigation, built from scratch.** The real app never had the
+mockup's sidebar wired up — every page was a standalone island with no
+way to reach any other page except by typing a URL. `app/components/Nav.tsx`
++ `nav.module.css` (persistent left sidebar, `app/layout.tsx`) replicates
+`design-reference/mockup.html`'s sidebar structure and colors, grouped
+"Browse" (public: Dashboard, Ask the Record, Opposition Watch, Timeline,
+Suggest a Priority) vs "Internal" (admin: Review Queue, Source Manager,
+Trending Suggestions). Internal items get a visually distinct gold active
+state (vs. the public red) plus an "Admin" badge — requested directly:
+"internal pages with a different color button as this is just the proof
+of concept." Removed the ad-hoc `topLinks` row that used to live only on
+the Dashboard (superseded). Speakers and Calendar are NOT in the nav —
+those two views only ever existed in the mockup, never built as real
+pages (see "Data model" above) — flagged here rather than silently
+omitted.
+
+**Renaming pass**: Opposition Watch's on-page H1 "CLAIM, MEET RECORD" →
+"CLAIMS & CLARIFICATIONS" — flagged directly as not landing well; the new
+one matches the terminology already used everywhere else on that page
+(the Clarified/No clarification yet pills).
+
+## Timeline UI cleanup + Ask latency investigation (2026-09-01)
+
+Prompted directly: "dont forget, in timeline view, i dont want opposition
+stuff and we need to change it from 'accomplishments' to something more
+fitting." The backend filter (`getTimelineClaims()`, previous entry) was
+already live and correct — 0 opposition rows confirmed in the actual
+response — but the UI still had dead leftovers: an Everything /
+Accomplishments / Opposition statements filter row that was now
+pointless (opposition can never appear), and a per-item tag that
+branched on `isOpposition` (always false). Removed the dead filter row
+and simplified `TimelineItem` to always show the specific
+`accomplishment_type` label (Accomplishment/Policy Decision/Strategic
+Decision/Ongoing Initiative) rather than a generic bucket — same
+"specific type, not a blanket label" fix as the Dashboard stat rename.
+Page subtitle also still said "documented accomplishment and public
+statement" (a leftover both-stances framing) — corrected to "action,
+decision, and initiative."
+
+**Ask the Record latency — measured, not guessed.** Prompted directly:
+"is this searching raw records or have we vectorized this whole thing?"
+Added temporary timing instrumentation (`console.error` around
+`retrieve()` and the Anthropic call in `app/api/ask/route.ts`, kept in
+as permanent lightweight logging) and measured real requests: `retrieve()`
+(plain Postgres full-text search, `ts_rank` over the existing
+`idx_claims_search_vector`/`idx_sources_search_vector` GIN indexes) took
+39-246ms across three real questions — not the bottleneck, and
+vectorizing/embeddings would not meaningfully improve this. The
+Anthropic `claude-sonnet-5` call generating the actual answer took
+2.6-11.1s and accounts for nearly all of the total latency. Presented
+the client with the real tradeoff (switch to Haiku for speed vs. keep
+Sonnet for quality); explicit answer: "because this is political, i
+value accuracy highly... whatever decision you make, make sure we do
+not lose that." **Decision: did not touch the model, context size, or
+`max_tokens`** — the richer-synthesis/contradiction-handling behavior
+(see "Chatbot objectivity" above) was specifically built on Sonnet-level
+reasoning, and downgrading it for speed would directly risk the thing
+just prioritized. Instead fixed the actual UX problem, which was a
+silent multi-second wait reading as broken, not slow: `app/ask/ChatClient.tsx`'s
+old loading indicator was a 10.5px `--faint`-colored static line reading
+"Searching the record…" — both easy to miss and, per the measurement
+above, now inaccurate about what's actually taking the time. Replaced
+with a visible, animated indicator that rotates through honestly-worded
+phrases ("Searching the record…" → "Reading the matching sources…" →
+"Drafting a carefully sourced answer…") so the wait reads as the model
+being careful, not the app being slow. **Real streaming (token-by-token
+partial output) was considered and deliberately deferred** — it would
+meaningfully improve perceived latency further, but re-plumbing a
+tool-use response into a streamed one this close to the end-of-week demo
+risks introducing a bug into the citation-validation logic that gates
+this product's core credibility promise; worth doing as a real follow-up,
+not rushed in now.
 
 ## What can be mocked/stubbed for the demo, what can't
 

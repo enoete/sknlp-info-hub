@@ -11,7 +11,12 @@ const ALL = 'all';
 const UNDATED_KEY = 'undated';
 
 export default function TimelineClient({ claims }: { claims: TimelineClaim[] }) {
-  const [stanceFilter, setStanceFilter] = useState<string>(ALL);
+  // No stance filter here anymore -- getTimelineClaims() only ever
+  // returns accomplishment-stance claims now (see schema/claims.ts
+  // comment: "the Timeline is to make the govt look good," Ask the
+  // Record and Opposition Watch are the neutral both-sides surfaces),
+  // so an Everything/Accomplishments/Opposition-statements filter row
+  // would just be dead, confusing UI with only one real option.
   const [categoryFilter, setCategoryFilter] = useState<string>(ALL);
 
   const categories = useMemo(
@@ -22,11 +27,7 @@ export default function TimelineClient({ claims }: { claims: TimelineClaim[] }) 
     [claims]
   );
 
-  const filtered = claims.filter(
-    (c) =>
-      (stanceFilter === ALL || c.stance === stanceFilter) &&
-      (categoryFilter === ALL || c.category === categoryFilter)
-  );
+  const filtered = claims.filter((c) => categoryFilter === ALL || c.category === categoryFilter);
 
   // Group by year extracted from event_date, most recent year first
   // (matches the rest of the app's "what's most current" framing).
@@ -49,22 +50,6 @@ export default function TimelineClient({ claims }: { claims: TimelineClaim[] }) 
   return (
     <>
       <div className={styles.filterRow}>
-        <span className={`${styles.pill} ${stanceFilter === ALL ? styles.pillActive : ''}`} onClick={() => setStanceFilter(ALL)}>
-          Everything
-        </span>
-        <span
-          className={`${styles.pill} ${stanceFilter === 'accomplishment' ? styles.pillActive : ''}`}
-          onClick={() => setStanceFilter('accomplishment')}
-        >
-          Accomplishments
-        </span>
-        <span
-          className={`${styles.pill} ${stanceFilter === 'opposition_statement' ? styles.pillActive : ''}`}
-          onClick={() => setStanceFilter('opposition_statement')}
-        >
-          Opposition statements
-        </span>
-        <div className={styles.filterSep} />
         <span className={`${styles.pill} ${categoryFilter === ALL ? styles.pillActive : ''}`} onClick={() => setCategoryFilter(ALL)}>
           All sectors
         </span>
@@ -130,17 +115,12 @@ export default function TimelineClient({ claims }: { claims: TimelineClaim[] }) 
 
 function TimelineItem({ claim }: { claim: TimelineClaim }) {
   const color = getCategoryColor(claim.category);
-  const isOpposition = claim.stance === 'opposition_statement';
   return (
-    <Link
-      href={`/claim/${claim.id}`}
-      className={styles.item}
-      style={{ borderLeftColor: isOpposition ? 'var(--red)' : color.ink }}
-    >
-      <span className={styles.itemDot} style={{ borderColor: isOpposition ? 'var(--red)' : color.ink }} />
+    <Link href={`/claim/${claim.id}`} className={styles.item} style={{ borderLeftColor: color.ink }}>
+      <span className={styles.itemDot} style={{ borderColor: color.ink }} />
       <div className={styles.itemMeta}>
-        <span className={`${styles.stanceTag} ${isOpposition ? styles.stanceOpposition : styles.stanceAccomplishment}`}>
-          {isOpposition ? 'Opposition' : accomplishmentTypeLabel(claim.accomplishment_type)}
+        <span className={`${styles.stanceTag} ${styles.stanceAccomplishment}`}>
+          {accomplishmentTypeLabel(claim.accomplishment_type)}
         </span>
         <span className={styles.catTag} style={{ background: color.tint, color: color.ink }}>
           {claim.category ?? 'Uncategorized'}

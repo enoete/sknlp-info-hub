@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import styles from './dashboard.module.css';
 import { getDashboardClaims, getDashboardStats } from './lib/claims';
 import DashboardClient from './DashboardClient';
@@ -10,14 +9,6 @@ export default async function DashboardPage() {
 
   return (
     <main className="max-w-5xl mx-auto px-9 py-12">
-      <div className={styles.topLinks}>
-        <Link href="/timeline">Timeline →</Link>
-        <Link href="/ask">Ask the Record →</Link>
-        <Link href="/opposition-watch">Opposition Watch →</Link>
-        <Link href="/source-manager">Source Manager (internal) →</Link>
-        <Link href="/review-queue">Review Queue (internal) →</Link>
-      </div>
-
       <div className={styles.pageHead}>
         <div className={styles.eyebrow}>Official record</div>
         <h1>WHAT&apos;S ACTUALLY BEEN DONE</h1>
@@ -30,7 +21,7 @@ export default async function DashboardPage() {
       <div className={styles.statRow}>
         <div className={styles.statCard}>
           <div className={styles.num}>{stats.accomplishments}</div>
-          <div className={styles.label}>Documented accomplishments</div>
+          <div className={styles.label}>Documented actions &amp; decisions</div>
         </div>
         <div className={styles.statCard}>
           <div className={styles.num}>{stats.sourcesIndexed}</div>

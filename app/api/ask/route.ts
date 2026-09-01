@@ -103,8 +103,10 @@ export async function POST(req: NextRequest) {
   }
 
   let retrieved: RetrievedRow[];
+  const _t0 = Date.now();
   try {
     retrieved = await retrieve(question);
+    console.error(`[timing] retrieve() took ${Date.now() - _t0}ms, ${retrieved.length} rows`);
   } catch (err) {
     // DB failure -> safe error, never a fabricated answer.
     return NextResponse.json({ error: `Database query failed: ${String(err)}` }, { status: 502 });
@@ -146,7 +148,9 @@ published_at: ${c.published_at ?? 'unknown'}${
       }${
         c.match_type === 'related'
           ? '\nNOTE: this claim was NOT matched by the user’s own words — it was pulled in only because it shares a topic category with a nearby opposition claim above. It may not actually address that claim. Only use it as the answer, or cite it as a "clarification," if it genuinely speaks to the same specific topic — never present it as confirming or denying an opposition claim just because it shares a category.'
-          : ''
+          : c.match_type === 'manual_clarification'
+            ? '\nNOTE: an admin has explicitly confirmed this claim as the government’s own clarification/response to a nearby opposition claim above — this is a verified pairing, not a heuristic guess. You may present it directly as the government’s response to that claim.'
+            : ''
       }`
     )
     .join('\n\n');
@@ -162,6 +166,7 @@ ${contextBlock}`;
   // tool_use response, and even then it's re-validated against the actual
   // retrieved rows below before being trusted.
   let anthropicRes: Response;
+  const _t1 = Date.now();
   try {
     anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -179,6 +184,7 @@ ${contextBlock}`;
         tool_choice: { type: 'tool', name: 'answer_from_record' }
       })
     });
+    console.error(`[timing] anthropic call took ${Date.now() - _t1}ms`);
   } catch (err) {
     // Network-level failure (DNS, timeout, connection refused, etc.)
     return NextResponse.json(
@@ -233,12 +239,19 @@ ${contextBlock}`;
   // claim to derive a category from — never fabricated for a no-record
   // answer. A failure here should never take down an otherwise-good answer,
   // so it's caught and just omitted rather than propagated.
+  // matchedClaim.id can be a synthetic, non-UUID placeholder
+  // ("manual:<opposition-claim-id>") when the citation is an admin's
+  // written clarification with no backing claims-table row (see
+  // retrieve.ts's findRelatedRecordsForOpposition) -- never pass that
+  // into a query expecting a real claim UUID.
+  const realClaimId = matchedClaim && !matchedClaim.id.startsWith('manual:') ? matchedClaim.id : null;
+
   let followUpSuggestions: string[] = [];
-  if (matchedClaim) {
-    followUpSuggestions = await getFollowUpQuestions(matchedClaim.id, matchedClaim.category).catch(() => []);
+  if (matchedClaim && realClaimId) {
+    followUpSuggestions = await getFollowUpQuestions(realClaimId, matchedClaim.category).catch(() => []);
   }
 
-  await logChatQuery(question, answer.found, matchedClaim?.id ?? null).catch(() => {});
+  await logChatQuery(question, answer.found, realClaimId).catch(() => {});
 
   return NextResponse.json({
     ...answer,

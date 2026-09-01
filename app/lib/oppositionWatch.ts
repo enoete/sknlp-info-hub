@@ -43,6 +43,11 @@ export interface OppositionPair {
   // every scraped source, so it's the honest "when" for filtering here.
   year: number | null;
   record: OppositionRecord | null;
+  // 'manual' when an admin explicitly linked `record` via
+  // manual_clarification_id (see schema.sql) -- always takes priority
+  // over 'auto' (findClosestRecord's same-category heuristic match).
+  // null when `record` itself is null (no clarification at all).
+  record_source: 'manual' | 'auto' | null;
 }
 
 // Below this, "closest" is really "least-unrelated" — noise, not worth
@@ -157,8 +162,18 @@ export async function findClosestRecord(
         WHERE cts.claim_id = c.id
         ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
      FROM claims c
-     JOIN claim_sources cs ON cs.claim_id = c.id
-     JOIN sources s ON s.id = cs.source_id
+     -- One representative source per claim, same LATERAL pattern as
+     -- claims.ts's getDashboardClaims fix -- a plain JOIN here let a
+     -- multi-source claim occupy the ORDER BY/LIMIT 1 tie non-
+     -- deterministically depending on WHICH of its sources sorted last.
+     JOIN LATERAL (
+       SELECT s.source_type, s.title, s.speaker_org, s.origin_url, s.published_at
+       FROM claim_sources cs
+       JOIN sources s ON s.id = cs.source_id
+       WHERE cs.claim_id = c.id
+       ORDER BY s.created_at DESC
+       LIMIT 1
+     ) s ON true
      CROSS JOIN q
      WHERE c.review_status = 'approved' AND c.stance = 'accomplishment' AND c.category = $2
      ORDER BY rank DESC, c.event_date DESC NULLS LAST
@@ -211,11 +226,16 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
     year: number | null;
     named_speaker: string | null;
     source_start_seconds: number | null;
+    manual_clarification_id: string | null;
+    manual_clarification_title: string | null;
+    manual_clarification_text: string | null;
+    manual_clarification_url: string | null;
   }>(
     `SELECT
-       c.id, c.category, c.title, c.summary,
+       c.id, c.category, c.title, c.summary, c.manual_clarification_id,
+       c.manual_clarification_title, c.manual_clarification_text, c.manual_clarification_url,
        to_char(c.event_date, 'YYYY-MM-DD') AS event_date,
-       s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org,
+       s.source_type, s.source_title, s.speaker_name, s.speaker_org,
        s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
        EXTRACT(YEAR FROM coalesce(c.event_date, s.published_at))::INT AS year,
        (SELECT ts.speaker_name_at_time
@@ -229,8 +249,17 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
         WHERE cts.claim_id = c.id
         ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
      FROM claims c
-     JOIN claim_sources cs ON cs.claim_id = c.id
-     JOIN sources s ON s.id = cs.source_id
+     -- Same fan-out fix as getDashboardClaims/findClosestRecord above --
+     -- confirmed live 2026-08-31 this rendered a corroborated opposition
+     -- claim as one Opposition Watch card per linked source.
+     JOIN LATERAL (
+       SELECT s.source_type, s.title AS source_title, s.speaker_name, s.speaker_org, s.origin_url, s.published_at
+       FROM claim_sources cs
+       JOIN sources s ON s.id = cs.source_id
+       WHERE cs.claim_id = c.id
+       ORDER BY s.created_at DESC
+       LIMIT 1
+     ) s ON true
      WHERE c.review_status = 'approved' AND c.stance = 'opposition_statement'
      ORDER BY c.event_date DESC NULLS LAST, c.created_at DESC`
   );
@@ -241,12 +270,78 @@ export async function getOppositionPairs(): Promise<OppositionPair[]> {
   // live 2026-08-31). Each claim's lookup is fully independent, so
   // running them concurrently is safe and turns that into roughly one
   // call's latency instead of N.
-  const records = await Promise.all(claims.map((c) => findClosestRecord(c.category, `${c.title} ${c.summary}`)));
-  const pairs: OppositionPair[] = claims.map((c, i) => ({
-    ...c,
-    origin_url: withTimestamp(c.origin_url, c.source_start_seconds),
-    record: records[i]
-  }));
+  //
+  // An admin's manual clarification -- either a linked claim
+  // (manual_clarification_id) or a written one (manual_clarification_text
+  // + url, see schema.sql) -- always wins over the automated match, both
+  // because explicit human judgment should outrank a heuristic, and
+  // because it saves an LLM relevance call for every claim an admin has
+  // already resolved. The two manual mechanisms are mutually exclusive
+  // per-claim (enforced in reviewQueue.ts), so at most one applies.
+  const manualIds = Array.from(new Set(claims.map((c) => c.manual_clarification_id).filter((id): id is string => id !== null)));
+  const manualRecords = manualIds.length ? await fetchClaimsAsRecords(manualIds) : new Map<string, OppositionRecord>();
+
+  const needsAutoMatch = (c: (typeof claims)[number]) => !c.manual_clarification_id && !c.manual_clarification_url;
+  const records = await Promise.all(
+    claims.map((c) => (needsAutoMatch(c) ? findClosestRecord(c.category, `${c.title} ${c.summary}`) : Promise.resolve(null)))
+  );
+  const pairs: OppositionPair[] = claims.map((c, i) => {
+    const linked = c.manual_clarification_id ? manualRecords.get(c.manual_clarification_id) ?? null : null;
+    const written: OppositionRecord | null = c.manual_clarification_url
+      ? {
+          title: c.manual_clarification_title ?? 'Government clarification',
+          summary: c.manual_clarification_text ?? '',
+          source_type: 'official_govt',
+          source_title: 'Admin-provided source',
+          speaker_org: 'Government (manual entry)',
+          origin_url: c.manual_clarification_url,
+          published_at: null
+        }
+      : null;
+    const manual = linked ?? written;
+    const record = manual ?? records[i];
+    return {
+      ...c,
+      origin_url: withTimestamp(c.origin_url, c.source_start_seconds),
+      record,
+      record_source: manual ? 'manual' : record ? 'auto' : null
+    };
+  });
   pairsCache = { pairs, expiresAt: now + PAIRS_CACHE_TTL_MS };
   return pairs;
+}
+
+// Batch-fetches OppositionRecord-shaped data for a set of manually-linked
+// clarification claim ids -- same shape findClosestRecord returns, so the
+// UI doesn't need to know whether a record came from the heuristic match
+// or an admin's explicit link. Exported for claims.ts's getClaimById,
+// which needs the identical manual-clarification lookup for a single
+// claim on the detail page.
+export async function fetchClaimsAsRecords(claimIds: string[]): Promise<Map<string, OppositionRecord>> {
+  const { rows } = await pool.query<OppositionRecord & { id: string; source_start_seconds: number | null }>(
+    `SELECT
+       c.id, c.title, c.summary, s.source_type, s.title AS source_title,
+       s.speaker_org, s.origin_url, to_char(s.published_at, 'YYYY-MM-DD') AS published_at,
+       (SELECT ts.start_seconds
+        FROM claim_transcript_segments cts
+        JOIN transcript_segments ts ON ts.id = cts.segment_id
+        WHERE cts.claim_id = c.id
+        ORDER BY ts.start_seconds ASC LIMIT 1) AS source_start_seconds
+     FROM claims c
+     JOIN LATERAL (
+       SELECT s.source_type, s.title, s.speaker_org, s.origin_url, s.published_at
+       FROM claim_sources cs
+       JOIN sources s ON s.id = cs.source_id
+       WHERE cs.claim_id = c.id
+       ORDER BY s.created_at DESC
+       LIMIT 1
+     ) s ON true
+     WHERE c.id = ANY($1::uuid[])`,
+    [claimIds]
+  );
+  const map = new Map<string, OppositionRecord>();
+  for (const r of rows) {
+    map.set(r.id, { ...r, origin_url: withTimestamp(r.origin_url, r.source_start_seconds) });
+  }
+  return map;
 }
