@@ -16,7 +16,7 @@ import re
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from scope_config import ADMINISTRATION_START, in_scope
@@ -230,16 +230,28 @@ def find_historical_candidates(
     find_new_in_scope_videos."""
     candidates = []
     last_confirmed_date: Optional[date] = seed_last_confirmed_date
-    # A single mistyped year in a title (real example hit during testing:
-    # "Radio Market ... - January 14, 2022" sitting between two January
-    # 2023 uploads -- a one-year typo on the channel's own upload, not a
-    # real chronology jump) must not be trusted enough to end the whole
-    # walk early. Adjacent items in this playlist are realistically at
-    # most a few days apart; a parsed date implying a jump bigger than
-    # this is treated as an unreliable outlier -- kept as a candidate
-    # (still probably real content) but never allowed to move
-    # last_confirmed_date or trigger the cutoff check.
-    MAX_PLAUSIBLE_JUMP_DAYS = 45
+    # We're walking newest -> oldest by construction (the uploads
+    # playlist is guaranteed reverse-chronological), so any correctly-
+    # parsed date should be <= last_confirmed_date, with a small
+    # tolerance for same-day/adjacent-position uploads. A date NEWER
+    # than the running anchor by more than that is the real anomaly
+    # signal (a title typo -- real example hit during testing: "Radio
+    # Market ... - January 14, 2022" sitting between two January 2023
+    # uploads, a one-year typo on the channel's own upload) and gets
+    # discarded. A date that's OLDER, however much older, is always
+    # plausible on its own -- a channel can go months between uploads.
+    # This used to be a single symmetric window (MAX_PLAUSIBLE_JUMP_DAYS
+    # = 45 in both directions), which was a real bug on lower-frequency
+    # channels: PLP and Straight Talk both post far less often than ZIZ
+    # (which this constant was tuned against), so a completely normal
+    # multi-month gap between consecutive playlist positions got
+    # rejected as "implausible," leaving last_confirmed_date stuck near
+    # its first (often noisy) anchor value. That meant the scope-cutoff
+    # check below never engaged and the walk silently drifted years past
+    # the Aug 2022 cutoff without ever stopping -- confirmed live on
+    # PLP's channel (150 candidates walked, spanning back to 2022
+    # campaign rally uploads, none ever flagged out of scope).
+    FORWARD_TOLERANCE_DAYS = 3
 
     for page in range(start_page, start_page + max_pages):
         start = page * page_size + 1
@@ -257,7 +269,7 @@ def find_historical_candidates(
 
             parsed = parse_date_from_title(title)
             if parsed is not None:
-                if last_confirmed_date is None or abs((last_confirmed_date - parsed).days) <= MAX_PLAUSIBLE_JUMP_DAYS:
+                if last_confirmed_date is None or parsed <= last_confirmed_date + timedelta(days=FORWARD_TOLERANCE_DAYS):
                     last_confirmed_date = parsed
                 else:
                     print(f"Ignoring implausible date jump ({parsed}, vs running {last_confirmed_date}) in title: {title!r}", file=sys.stderr)

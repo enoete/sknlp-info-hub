@@ -50,14 +50,22 @@ BULK_MIN_SIMILARITY = 0.45
 
 
 def find_duplicate_pairs(conn) -> list[dict]:
+    # Widened from approved-only to approved+pending_review 2026-08-31,
+    # same day as the live-path widening in claim_dedup.py -- a live
+    # audit found real duplicate clusters sitting in the pending queue
+    # itself (never compared to each other since the original live-path
+    # matching only checked against already-approved claims). Rejected
+    # claims are excluded either way (already handled or intentionally
+    # discarded, never a merge candidate).
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
-            """SELECT a.id AS id_a, a.title AS title_a, a.summary AS summary_a, a.created_at AS created_a,
-                      b.id AS id_b, b.title AS title_b, b.summary AS summary_b, b.created_at AS created_b,
+            """SELECT a.id AS id_a, a.title AS title_a, a.summary AS summary_a, a.created_at AS created_a, a.review_status AS status_a,
+                      b.id AS id_b, b.title AS title_b, b.summary AS summary_b, b.created_at AS created_b, b.review_status AS status_b,
                       similarity(a.title || ' ' || a.summary, b.title || ' ' || b.summary) AS sim
                FROM claims a JOIN claims b ON a.id < b.id
                WHERE a.stance = b.stance
-                 AND a.review_status = 'approved' AND b.review_status = 'approved'
+                 AND a.review_status IN ('approved', 'pending_review')
+                 AND b.review_status IN ('approved', 'pending_review')
                  AND similarity(a.title || ' ' || a.summary, b.title || ' ' || b.summary) > %s
                ORDER BY sim DESC""",
             (BULK_MIN_SIMILARITY,),
@@ -119,8 +127,18 @@ def main():
         if not _is_same_claim(client, _generate_with_retry, p["title_a"], p["summary_a"], p["title_b"], p["summary_b"]):
             continue
 
-        # Keep the older claim as canonical -- arbitrary but stable.
-        if p["created_a"] <= p["created_b"]:
+        # Prefer an already-approved claim as canonical over a
+        # pending_review one regardless of age (it's already been
+        # human-vetted, don't discard that); otherwise keep the older
+        # claim as canonical -- arbitrary but stable.
+        if p["status_a"] == "approved" and p["status_b"] != "approved":
+            a_is_canonical = True
+        elif p["status_b"] == "approved" and p["status_a"] != "approved":
+            a_is_canonical = False
+        else:
+            a_is_canonical = p["created_a"] <= p["created_b"]
+
+        if a_is_canonical:
             canonical, canonical_title, duplicate, duplicate_title = id_a, p["title_a"], id_b, p["title_b"]
         else:
             canonical, canonical_title, duplicate, duplicate_title = id_b, p["title_b"], id_a, p["title_a"]

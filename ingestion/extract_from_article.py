@@ -124,7 +124,15 @@ RESPONSE_SCHEMA = {
                 "checkable in them. CRITICAL SCOPE RULE, checked before stance: this archive covers "
                 "ONLY the current SKNLP administration's term, which began August 5, 2022 (Dr. Terrance "
                 "Drew, Prime Minister). A claim solely about what a PREVIOUS/DIFFERENT administration "
-                "did is out of scope regardless of stance -- do not extract it."
+                "did is out of scope regardless of stance -- do not extract it. This applies even when "
+                "a CURRENT official is quoted making the allegation critically (e.g. 'the prior "
+                "government spent $X without delivering anything') -- that content is still solely "
+                "about the previous administration's own record and must be excluded, not tagged "
+                "accomplishment just because a current official said it (confirmed real bug 2026-08-31, "
+                "see extract_from_video.py's matching rule for the full example). Only extract such a "
+                "statement if the article's own substance is a CURRENT government action taken in "
+                "response (an audit, a legislative fix, funds recovered) -- then the claim is about "
+                "that current action, with the history as context only."
             ),
             "items": {
                 "type": "object",

@@ -90,16 +90,31 @@ def _is_same_claim(client, generate_with_retry, new_title: str, new_summary: str
 
 def find_matching_approved_claim(conn, client, generate_with_retry, title: str, summary: str, stance: str):
     """Returns an existing claim id to link a new source to, or None to
-    insert a fresh claim. Candidates are any approved claim with the
-    same stance (never cross accomplishment/opposition) and real
-    pg_trgm similarity on title+summary combined -- category is
-    deliberately NOT filtered on, see module docstring."""
+    insert a fresh claim. Candidates are any claim with the same stance
+    (never cross accomplishment/opposition) that's still live -- approved
+    OR still sitting in pending_review, never rejected -- with real
+    pg_trgm similarity on title+summary combined; category is
+    deliberately NOT filtered on, see module docstring.
+
+    Widened from approved-only to also cover pending_review 2026-08-31,
+    same day, after a live audit found genuine duplicate clusters piling
+    up in the pending queue itself (e.g. "Passage of the Banking
+    (Amendment) Bill 2026" landing as 3-4 separate pending claims from
+    different videos) -- approved-only matching only ever prevents a
+    duplicate AFTER one side has already been reviewed and approved; two
+    claims extracted from different sources before either is reviewed
+    never got compared at all, so they'd sit in the queue separately and
+    could both get approved as duplicates by a reviewer working through a
+    long queue. Matching against pending claims too catches this at
+    ingestion time instead, and a merge here never bypasses review -- if
+    the existing match is itself still pending, the combined claim still
+    needs a human decision, just once instead of once per duplicate."""
     combined = f"{title} {summary}"
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute(
             """SELECT id, title, summary, similarity(title || ' ' || summary, %s) AS sim
                FROM claims
-               WHERE review_status = 'approved' AND stance = %s
+               WHERE review_status IN ('approved', 'pending_review') AND stance = %s
                  AND similarity(title || ' ' || summary, %s) > %s
                ORDER BY sim DESC LIMIT %s""",
             (combined, stance, combined, MIN_SIMILARITY, CANDIDATE_LIMIT),
