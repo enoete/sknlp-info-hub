@@ -29,6 +29,7 @@ CREATE TYPE detection_method AS ENUM ('oauth_api', 'push_webhook', 'public_rss',
 CREATE TYPE registry_status AS ENUM ('active', 'paused', 'needs_legal_review');
 CREATE TYPE sample_origin AS ENUM ('initial_enrollment', 'confirmed_correction');
 CREATE TYPE attachment_type AS ENUM ('image', 'text', 'video');
+CREATE TYPE suggestion_status AS ENUM ('new', 'under_consideration');
 
 -- ------------------------------------------------------------
 -- ADMIN USERS: created first — referenced by almost everything
@@ -252,6 +253,48 @@ CREATE TABLE claims (
     -- the earlier claim down with it.
     completes_claim_id UUID REFERENCES claims(id) ON DELETE SET NULL,
     CONSTRAINT claims_completes_not_self CHECK (completes_claim_id IS NULL OR completes_claim_id != id),
+    -- Self-reference on an opposition_statement claim, pointing at the
+    -- accomplishment claim an admin has manually confirmed IS the
+    -- government's own clarification/response to that allegation --
+    -- decided 2026-08-31, prompted directly: "what will need to happen
+    -- is for the government to add their own clarifications manually
+    -- but that will need to be tagged as a manual entry... clarified by
+    -- admin." Deliberately NOT a free-text field: an admin can only link
+    -- to an EXISTING approved accomplishment claim (same
+    -- search-and-pick UI, searchAccomplishmentClaims(), as
+    -- completes_claim_id above), never type an unsourced clarification
+    -- directly -- that would violate this project's own non-negotiable
+    -- "every public claim must trace to a real source" rule. If the
+    -- real clarification doesn't exist as a claim yet, the government
+    -- statement has to be ingested as its own sourced accomplishment
+    -- claim first, then linked here. Same "flag for a human, never
+    -- auto-resolve" posture as completes_claim_id, and takes priority
+    -- over findClosestRecord()'s automated same-category match when
+    -- both exist (oppositionWatch.ts, retrieve.ts) -- an admin's
+    -- explicit judgment should always win over a heuristic. Rendered as
+    -- a distinct "Clarified by admin" tag, never merged visually with
+    -- the auto-matched "Clarified" pill, so a reader can tell the two
+    -- apart.
+    manual_clarification_id UUID REFERENCES claims(id) ON DELETE SET NULL,
+    CONSTRAINT claims_clarification_not_self CHECK (manual_clarification_id IS NULL OR manual_clarification_id != id),
+    -- Second, lighter-weight clarification path -- decided 2026-09-01,
+    -- prompted directly: the search-and-pick above only works when the
+    -- clarification already exists as its own ingested claim, and "if
+    -- your LLM could not find a cogent match, I dont think a human
+    -- would" either, via a keyword search over existing claim titles.
+    -- Most real clarifications won't already be sitting in the corpus
+    -- as their own claim. This lets an admin write the clarification
+    -- directly -- title, body text, and a source URL -- without first
+    -- having to get it ingested as a full claim. Still never bare
+    -- unsourced text: manual_clarification_url is the citation,
+    -- required alongside the other two at the application layer (see
+    -- reviewQueue.ts's updateManualClarificationText). Mutually
+    -- exclusive with manual_clarification_id above -- setting one
+    -- clears the other, so there's never ambiguity about which
+    -- clarification is the real one.
+    manual_clarification_title TEXT,
+    manual_clarification_text TEXT,
+    manual_clarification_url TEXT,
     -- Only ever set via explicit human confirmation/edit — including
     -- confirming event_date_suggested below via the review queue's planned
     -- "confirm suggested date" card (see CLAUDE.md). Never written directly
@@ -378,6 +421,62 @@ CREATE TABLE chat_queries (
 
 -- Matches the exact "most-asked, found=true" query in suggestions.ts.
 CREATE INDEX idx_chat_queries_found_question ON chat_queries (question) WHERE found = true;
+
+-- ------------------------------------------------------------
+-- SUGGEST A PRIORITY: anonymous public suggestion box + admin
+-- review workflow (decided 2026-08-31). See
+-- design-reference/source-manager-mockup.html for the pixel spec
+-- (public submit form + admin "Trending Suggestions" panel) and
+-- CLAUDE.md's "Suggest a Priority" section for the workflow
+-- decision. No IP address, session id, or any other identity/
+-- device signal is ever stored here — same explicit anonymity
+-- promise already made for chat_queries above; if a future column
+-- is ever added here, re-check that promise first, don't assume
+-- it still holds.
+--
+-- Two tables, not one: citizen_suggestions is the raw anonymous
+-- text as submitted (never edited); suggestion_themes is the
+-- clustered concept several submissions can share ("Better public
+-- transport"), computed live at submission time via a cheap
+-- pg_trgm pre-filter + one LLM same-theme judgment — the identical
+-- two-stage pattern already proven for claim de-duplication this
+-- session (see ingestion/claim_dedup.py's module docstring), reused
+-- here because the failure mode is the same: text similarity alone
+-- isn't reliable enough to cluster on by itself.
+-- ------------------------------------------------------------
+CREATE TABLE suggestion_themes (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    label       TEXT NOT NULL,      -- short theme name, e.g. "Better public transport" — set from the first submission that started this theme, never edited by a later one
+    category    TEXT,               -- one of CATEGORIES (ingestion/extract_from_video.py) — "Other" is a real value, not a stand-in for null
+    status      suggestion_status NOT NULL DEFAULT 'new',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE citizen_suggestions (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    text         TEXT NOT NULL,
+    category     TEXT,              -- assigned to THIS submission at intake; usually matches its theme's category but judged independently
+    theme_id     UUID REFERENCES suggestion_themes(id),
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Append-only, same posture as audit_log — an official's acknowledgement
+-- is a real, attributable administrative action worth a durable trail,
+-- not a field that gets silently overwritten by the next official who
+-- looks at the same theme. A theme can accumulate more than one over
+-- time (a follow-up comment as work progresses).
+CREATE TABLE suggestion_acknowledgements (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    theme_id      UUID NOT NULL REFERENCES suggestion_themes(id),
+    official_name TEXT NOT NULL,
+    comment       TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_citizen_suggestions_theme ON citizen_suggestions (theme_id);
+CREATE INDEX idx_suggestion_themes_status ON suggestion_themes (status);
+CREATE INDEX idx_suggestion_acknowledgements_theme ON suggestion_acknowledgements (theme_id);
 
 -- ------------------------------------------------------------
 -- CALENDAR (separate, simple)

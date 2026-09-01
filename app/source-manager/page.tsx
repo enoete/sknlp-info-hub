@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import styles from './source-manager.module.css';
 import { getRegisteredSources, RegisteredSource } from '@/app/lib/sourceManager';
 import { relativeTime } from '@/app/lib/time';
@@ -52,6 +53,12 @@ export default async function SourceManagerPage() {
           Every channel, site, or feed the ingestion agent watches, plus one-off items added by
           hand. Config only — this doesn&apos;t show extracted content itself.
         </p>
+      </div>
+
+      <div className={styles.stageNote}>
+        Looking for public priority suggestions? See{' '}
+        <Link href="/source-manager/suggestions">Trending Suggestions</Link> — the admin view for
+        submissions from <code>/suggest</code>.
       </div>
 
       <div className={styles.stageNote}>

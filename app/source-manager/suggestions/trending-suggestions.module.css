@@ -1,0 +1,175 @@
+.panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+}
+.themeHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+}
+.themeLeft {
+  flex: 1;
+  min-width: 0;
+}
+.themeLabel {
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.categoryTag {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.statusPill {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.statusNew {
+  background: var(--paper-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.statusUnderConsideration {
+  background: var(--gold-tint);
+  color: var(--gold-ink);
+  border: 1px solid var(--gold);
+}
+.mentionCount {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.trendBarWrap {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--paper-2);
+  margin-top: 10px;
+  overflow: hidden;
+}
+.trendBar {
+  height: 100%;
+  background: var(--red);
+  border-radius: 4px;
+}
+.expandIcon {
+  font-size: 12px;
+  color: var(--faint);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.detail {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.sectionLabel {
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.sample {
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 8px 10px;
+  background: var(--paper-2);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.ack {
+  padding: 10px 12px;
+  background: var(--green-tint);
+  border: 1px solid var(--green-ink);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.ackHead {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--green-ink);
+  margin-bottom: 3px;
+}
+.ackComment {
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.ackForm {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.textInput {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--ink);
+}
+textarea.textInput {
+  resize: vertical;
+  min-height: 60px;
+}
+.ackFormActions {
+  display: flex;
+  justify-content: flex-end;
+}
+.btnPrimary {
+  font-family: 'Barlow Semi Condensed', sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 12px;
+  background: var(--red);
+  color: #fff;
+}
+.btnPrimary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.formError {
+  background: var(--red-tint);
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.emptyState {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 28px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
