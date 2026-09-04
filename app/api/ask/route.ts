@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
 
   // Hard gate: nothing matched at all -> answer directly, no LLM call.
   if (retrieved.length === 0) {
-    await logChatQuery(question, false, null, isSuggestion).catch(() => {});
+    await logChatQuery(question, false, null, isSuggestion, NO_RECORD_FALLBACK).catch(() => {});
     return safeNoRecord(0, { rewritten_question: rewrittenQuestion, admin_hint_applied: !!adminHint });
   }
 
@@ -265,7 +265,9 @@ ${contextBlock}`;
   if (answer.found) {
     const validUrls = new Set(retrieved.map((c) => c.origin_url));
     if (!answer.citation?.url || !validUrls.has(answer.citation.url) || !answer.claim_title) {
-      await logChatQuery(question, false, null, isSuggestion).catch(() => {});
+      // The visitor saw NO_RECORD_FALLBACK (via safeNoRecord below), not
+      // the model's rejected answer.summary -- log what was actually shown.
+      await logChatQuery(question, false, null, isSuggestion, NO_RECORD_FALLBACK).catch(() => {});
       return safeNoRecord(retrieved.length, {
         _validation_failure: 'model citation did not match a retrieved source; failed closed'
       });
@@ -290,7 +292,10 @@ ${contextBlock}`;
     followUpSuggestions = await getFollowUpQuestions(realClaimId, matchedClaim.category).catch(() => []);
   }
 
-  await logChatQuery(question, answer.found, realClaimId, isSuggestion).catch(() => {});
+  // The exact text the visitor saw -- see schema.sql's answer_text
+  // comment for why this is captured verbatim rather than derived later.
+  const shownAnswerText = answer.found ? answer.summary ?? null : answer.no_record_message || NO_RECORD_FALLBACK;
+  await logChatQuery(question, answer.found, realClaimId, isSuggestion, shownAnswerText).catch(() => {});
 
   return NextResponse.json({
     ...answer,

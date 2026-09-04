@@ -21,11 +21,31 @@ const RATING_LABEL: Record<FeedbackRating, string> = {
   not_answered: 'Not answered'
 };
 
+const RATING_BASE_CLASS: Record<FeedbackRating, string> = {
+  fully_answered: styles.ratingBtnFully,
+  partially_answered: styles.ratingBtnPartial,
+  not_answered: styles.ratingBtnNot
+};
+
 const RATING_BTN_ACTIVE_CLASS: Record<FeedbackRating, string> = {
   fully_answered: styles.ratingBtnActiveFully,
   partially_answered: styles.ratingBtnActivePartial,
   not_answered: styles.ratingBtnActiveNot
 };
+
+const RATING_TAG_CLASS: Record<FeedbackRating, string> = {
+  fully_answered: styles.tagRatingFully,
+  partially_answered: styles.tagRatingPartial,
+  not_answered: styles.tagRatingNot
+};
+
+type OriginFilter = 'all' | 'suggestion' | 'typed';
+
+const ORIGIN_TABS: { value: OriginFilter; label: string }[] = [
+  { value: 'all', label: 'All questions' },
+  { value: 'suggestion', label: 'Pre-filled suggestions' },
+  { value: 'typed', label: 'Typed by visitor' }
+];
 
 export default function ChatFeedbackClient({
   initialLog,
@@ -36,7 +56,7 @@ export default function ChatFeedbackClient({
 }) {
   const [log, setLog] = useState(initialLog);
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
-  const [suggestionsOnly, setSuggestionsOnly] = useState(false);
+  const [originFilter, setOriginFilter] = useState<OriginFilter>('all');
 
   // Rating form -- one row's pending rating/context/reviewer, keyed by
   // chat_queries.id, seeded from whatever was already saved so re-opening
@@ -232,15 +252,17 @@ export default function ChatFeedbackClient({
 
   const filtered = useMemo(() => {
     return log.filter((r) => {
-      if (suggestionsOnly && !r.is_suggestion) return false;
+      if (originFilter === 'suggestion' && !r.is_suggestion) return false;
+      if (originFilter === 'typed' && r.is_suggestion) return false;
       if (ratingFilter === 'all') return true;
       if (ratingFilter === 'unreviewed') return r.feedback_rating === null;
       return r.feedback_rating === ratingFilter;
     });
-  }, [log, ratingFilter, suggestionsOnly]);
+  }, [log, ratingFilter, originFilter]);
 
   const counts = useMemo(() => {
-    const base = suggestionsOnly ? log.filter((r) => r.is_suggestion) : log;
+    const base =
+      originFilter === 'all' ? log : log.filter((r) => (originFilter === 'suggestion' ? r.is_suggestion : !r.is_suggestion));
     return {
       all: base.length,
       unreviewed: base.filter((r) => r.feedback_rating === null).length,
@@ -248,7 +270,16 @@ export default function ChatFeedbackClient({
       partially_answered: base.filter((r) => r.feedback_rating === 'partially_answered').length,
       not_answered: base.filter((r) => r.feedback_rating === 'not_answered').length
     };
-  }, [log, suggestionsOnly]);
+  }, [log, originFilter]);
+
+  const originCounts = useMemo(
+    () => ({
+      all: log.length,
+      suggestion: log.filter((r) => r.is_suggestion).length,
+      typed: log.filter((r) => !r.is_suggestion).length
+    }),
+    [log]
+  );
 
   return (
     <>
@@ -278,12 +309,17 @@ export default function ChatFeedbackClient({
             {t.label} ({counts[t.value]})
           </span>
         ))}
-        <span
-          className={`${styles.pill} ${suggestionsOnly ? styles.pillActive : ''}`}
-          onClick={() => setSuggestionsOnly((v) => !v)}
-        >
-          Suggestion clicks only
-        </span>
+      </div>
+      <div className={styles.filterRow}>
+        {ORIGIN_TABS.map((t) => (
+          <span
+            key={t.value}
+            className={`${styles.pill} ${originFilter === t.value ? styles.pillActive : ''}`}
+            onClick={() => setOriginFilter(t.value)}
+          >
+            {t.label} ({originCounts[t.value]})
+          </span>
+        ))}
       </div>
 
       {filtered.length === 0 ? (
@@ -294,19 +330,29 @@ export default function ChatFeedbackClient({
           const needsCorrection = rating === 'not_answered' || rating === 'partially_answered';
 
           return (
-            <div key={r.id} className={styles.card}>
+            <div key={r.id} className={`${styles.card} ${r.is_suggestion ? styles.cardSuggestion : styles.cardTyped}`}>
               <div className={styles.metaRow}>
+                {r.is_suggestion ? (
+                  <span className={`${styles.tag} ${styles.tagSuggestion}`}>◆ Pre-filled suggestion</span>
+                ) : (
+                  <span className={`${styles.tag} ${styles.tagTyped}`}>⌨ Typed by visitor</span>
+                )}
                 <span className={`${styles.tag} ${r.found ? styles.tagFound : styles.tagNotFound}`}>
                   {r.found ? 'Bot answered' : 'No record found'}
                 </span>
-                {r.is_suggestion && <span className={`${styles.tag} ${styles.tagSuggestion}`}>Suggestion click</span>}
                 {r.feedback_rating && (
-                  <span className={`${styles.tag} ${styles.tagRated}`}>{RATING_LABEL[r.feedback_rating]}</span>
+                  <span className={`${styles.tag} ${RATING_TAG_CLASS[r.feedback_rating]}`}>
+                    {RATING_LABEL[r.feedback_rating]}
+                  </span>
                 )}
                 <span className={styles.timestamp}>{r.created_at}</span>
               </div>
 
               <p className={styles.question}>{r.question}</p>
+
+              <div className={r.answer_text ? styles.answerBox : `${styles.answerBox} ${styles.answerBoxEmpty}`}>
+                {r.answer_text ?? 'No answer text was recorded for this question (logged before this feature existed).'}
+              </div>
 
               <div className={styles.citedLine}>
                 {r.claim_id ? (
@@ -326,7 +372,9 @@ export default function ChatFeedbackClient({
                 {(Object.keys(RATING_LABEL) as FeedbackRating[]).map((val) => (
                   <button
                     key={val}
-                    className={`${styles.ratingBtn} ${rating === val ? RATING_BTN_ACTIVE_CLASS[val] : ''}`}
+                    className={`${styles.ratingBtn} ${RATING_BASE_CLASS[val]} ${
+                      rating === val ? RATING_BTN_ACTIVE_CLASS[val] : ''
+                    }`}
                     disabled={!!ratingSaving[r.id]}
                     onClick={() => pickRating(r.id, val)}
                   >

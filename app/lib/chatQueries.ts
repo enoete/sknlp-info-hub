@@ -8,19 +8,21 @@ import { ValidationError } from './sourceManager';
 // every call site wraps this in .catch(() => {}) rather than awaiting
 // it strictly. isSuggestion records whether this question came from
 // clicking a pre-filled suggestion pill vs. being typed — see
-// getMostClickedSuggestions below, the reason this exists.
+// getMostClickedSuggestions below, the reason this exists. answerText is
+// the exact text the visitor actually saw (answer.summary, or the
+// no-record message) — see schema.sql's column comment for why this is
+// captured verbatim here rather than derived later from claimId.
 export async function logChatQuery(
   question: string,
   found: boolean,
   claimId: string | null,
-  isSuggestion: boolean
+  isSuggestion: boolean,
+  answerText: string | null
 ): Promise<void> {
-  await pool.query(`INSERT INTO chat_queries (question, found, claim_id, is_suggestion) VALUES ($1, $2, $3, $4)`, [
-    question,
-    found,
-    claimId,
-    isSuggestion
-  ]);
+  await pool.query(
+    `INSERT INTO chat_queries (question, found, claim_id, is_suggestion, answer_text) VALUES ($1, $2, $3, $4, $5)`,
+    [question, found, claimId, isSuggestion, answerText]
+  );
 }
 
 // Real questions people already asked that led to a genuine answer,
@@ -63,6 +65,7 @@ export interface ChatQueryLogRow {
   id: string;
   question: string;
   found: boolean;
+  answer_text: string | null;
   is_suggestion: boolean;
   claim_id: string | null;
   claim_title: string | null;
@@ -89,7 +92,7 @@ const LOG_LIMIT = 300;
 // visit to this page shows the prior verdict rather than a blank form.
 export async function getChatQueryLog(): Promise<ChatQueryLogRow[]> {
   const { rows } = await pool.query<ChatQueryLogRow>(
-    `SELECT q.id, q.question, q.found, q.is_suggestion, q.claim_id,
+    `SELECT q.id, q.question, q.found, q.answer_text, q.is_suggestion, q.claim_id,
             c.title AS claim_title, c.stance AS claim_stance,
             q.feedback_rating, q.feedback_context,
             q.feedback_claim_id, fc.title AS feedback_claim_title,

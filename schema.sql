@@ -416,6 +416,17 @@ CREATE TABLE chat_queries (
     question    TEXT NOT NULL,
     found       BOOLEAN NOT NULL,
     claim_id    UUID REFERENCES claims(id),  -- the claim actually cited back; null when found=false
+    -- The exact answer text the visitor actually saw -- answer.summary
+    -- when found=true, otherwise the no-record message shown. Stored
+    -- verbatim at response time, not reconstructed later from claim_id's
+    -- row: a linked claim's own title/summary can be edited afterward
+    -- (see accomplishment_type/featured being editable-after-the-fact
+    -- elsewhere in this file), and the model's generated summary can
+    -- legitimately differ from the claim's stored summary when
+    -- synthesizing several retrieved claims into one answer. Without
+    -- this, an admin reviewing the feedback log has no way to judge
+    -- answer quality at all -- only which claim (if any) got cited.
+    answer_text TEXT,
     -- True when this question was asked by clicking a pre-filled
     -- suggestion pill (a starting suggestion or a follow-up) rather than
     -- typed by hand — lets the admin feedback log below show which

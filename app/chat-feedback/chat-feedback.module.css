@@ -110,9 +110,23 @@
 .card {
   background: var(--paper);
   border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
   border-radius: var(--radius);
   padding: 16px 20px;
   margin-bottom: 12px;
+}
+/* Marked, at-a-glance difference between a question the visitor typed
+   themselves and one they reached by clicking a pre-filled suggestion
+   pill -- deliberately NOT red/amber/green (those are reserved for the
+   answer-quality rating below; reusing them here would make a gold
+   "pre-filled" card read as if it meant "partially answered"). Gold
+   matches the suggestion pill's own color elsewhere in the app; ink is
+   the neutral, unambiguous "nothing special" default. */
+.cardTyped {
+  border-left-color: var(--ink);
+}
+.cardSuggestion {
+  border-left-color: var(--gold);
 }
 .metaRow {
   display: flex;
@@ -138,13 +152,24 @@
   color: var(--red-ink);
 }
 .tagSuggestion {
+  background: var(--gold);
+  color: #fff;
+}
+.tagTyped {
+  background: var(--ink);
+  color: #fff;
+}
+.tagRatingFully {
+  background: var(--green-tint);
+  color: var(--green-ink);
+}
+.tagRatingPartial {
   background: var(--gold-tint);
   color: var(--gold-ink);
 }
-.tagRated {
-  background: var(--paper-2);
-  color: var(--muted);
-  border: 1px solid var(--line);
+.tagRatingNot {
+  background: var(--red-tint);
+  color: var(--red-ink);
 }
 .timestamp {
   margin-left: auto;
@@ -157,8 +182,24 @@
   font-size: 14.5px;
   font-weight: 700;
   color: var(--ink);
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-family: 'Barlow Semi Condensed', sans-serif;
+}
+/* The actual answer text the visitor saw -- the whole point of this
+   page is judging THIS, not just which claim (if any) got cited. */
+.answerBox {
+  background: var(--paper-2);
+  border-left: 3px solid var(--line);
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+.answerBoxEmpty {
+  color: var(--faint);
+  font-style: italic;
 }
 .citedLine {
   font-size: 12.5px;
@@ -177,34 +218,60 @@
   margin-bottom: 10px;
 }
 .ratingBtn {
-  border: 1px solid var(--line);
-  background: var(--paper-2);
+  border: 1px solid transparent;
   border-radius: 7px;
   padding: 7px 14px;
   font-size: 12.5px;
   font-weight: 700;
   font-family: 'Barlow Semi Condensed', sans-serif;
   cursor: pointer;
-  color: var(--muted);
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 .ratingBtn:disabled {
   opacity: 0.6;
   cursor: default;
 }
+/* Red / amber / green, always visibly color-coded by rating meaning --
+   not just when selected. Hover deepens toward the same active shade so
+   the color you'll get is exactly what you see before clicking. */
+.ratingBtnFully {
+  background: rgba(14, 138, 75, 0.06);
+  color: var(--green-ink);
+}
+.ratingBtnFully:hover:not(:disabled) {
+  background: var(--green-tint);
+  border-color: var(--green-ink);
+}
+.ratingBtnPartial {
+  background: rgba(244, 180, 0, 0.09);
+  color: var(--gold-ink);
+}
+.ratingBtnPartial:hover:not(:disabled) {
+  background: var(--gold-tint);
+  border-color: var(--gold-ink);
+}
+.ratingBtnNot {
+  background: rgba(200, 16, 46, 0.06);
+  color: var(--red-ink);
+}
+.ratingBtnNot:hover:not(:disabled) {
+  background: var(--red-tint);
+  border-color: var(--red-ink);
+}
 .ratingBtnActiveFully {
   background: var(--green-tint);
   color: var(--green-ink);
-  border-color: transparent;
+  border-color: var(--green-ink);
 }
 .ratingBtnActivePartial {
   background: var(--gold-tint);
   color: var(--gold-ink);
-  border-color: transparent;
+  border-color: var(--gold-ink);
 }
 .ratingBtnActiveNot {
   background: var(--red-tint);
   color: var(--red-ink);
-  border-color: transparent;
+  border-color: var(--red-ink);
 }
 
 .editBlock {

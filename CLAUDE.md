@@ -1958,6 +1958,40 @@ correct answer when the bot missed. New page: `/chat-feedback`
   any live test-data cleanup, never rely on recency as a proxy for "rows
   I created" on a table with concurrent real writes.
 
+**Same-day follow-up, prompted directly by feedback on the first pass**:
+"How will we know if it was answered well if we don't see the actual
+answer?" plus a UX request for color-coded rating buttons and a marked
+visual difference between typed and pre-filled questions.
+
+- `chat_queries.answer_text` — the exact text the visitor actually saw
+  (`answer.summary` when found, otherwise whichever no-record message
+  was shown), captured verbatim in `route.ts` at response time rather
+  than reconstructed later from `claim_id`'s row. This matters because a
+  linked claim's own title/summary can be edited afterward (several
+  fields elsewhere in this file are explicitly "editable after the
+  fact"), and the model's generated summary can legitimately differ from
+  the claim's stored summary when synthesizing several retrieved claims
+  into one answer — `claim_id` alone was never enough to judge what was
+  actually shown. Now rendered directly on the `/chat-feedback` card,
+  above the "Cited: ..." line, which is what actually makes the rating
+  workflow possible to use honestly.
+- **Color coding, not just labels.** The rating buttons are red/amber/
+  green-tinted at all times (not only once selected), deepen further on
+  hover to preview the exact shade a click will produce, and the saved-
+  rating chip in the card header now carries the same three colors
+  (previously a neutral grey "Rated" chip regardless of which rating).
+- **Typed vs. pre-filled, marked two ways.** Every card now carries an
+  explicit tag either way — "◆ Pre-filled suggestion" (gold) or "⌨ Typed
+  by visitor" (ink) — never just the absence of a badge — plus a
+  matching 4px left-border accent on the card itself for scanning the
+  list without reading each tag. Deliberately NOT red/amber/green: those
+  are reserved for the answer-quality rating, and reusing them here
+  would make a gold "pre-filled" card read as if it meant "partially
+  answered." The filter row grew a second, independent set of pills
+  (All questions / Pre-filled suggestions / Typed by visitor) alongside
+  the existing rating filter, rather than a single toggle — the two axes
+  are orthogonal and both need their own counts.
+
 ## What can be mocked/stubbed for the demo, what can't
 
 - **Can stub**: the ingestion agent (YouTube/sknis scraping), voice
