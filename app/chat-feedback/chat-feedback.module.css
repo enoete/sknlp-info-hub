@@ -363,7 +363,11 @@
   background: var(--red-tint);
   color: var(--red);
 }
-.decisionSaved {
-  background: var(--green-tint);
+/* The rating-confirmation log line, replacing the old explicit "Save
+   rating" button -- shown the instant a click (or a blur on the
+   guidance-note textarea) actually persists, naming what was recorded. */
+.savedLog {
+  font-size: 11.5px;
   color: var(--green-ink);
+  margin: -2px 0 10px;
 }

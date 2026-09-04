@@ -74,7 +74,6 @@ export default function ChatFeedbackClient({
   const [pendingContext, setPendingContext] = useState<Record<string, string>>({});
   const [ratingSaving, setRatingSaving] = useState<Record<string, boolean>>({});
   const [ratingError, setRatingError] = useState<Record<string, string>>({});
-  const [ratingSaved, setRatingSaved] = useState<Record<string, boolean>>({});
 
   function ratingFor(id: string, row: ChatQueryLogRow): FeedbackRating | null {
     return id in pendingRating ? pendingRating[id] : row.feedback_rating;
@@ -83,21 +82,24 @@ export default function ChatFeedbackClient({
     return id in pendingContext ? pendingContext[id] : row.feedback_context ?? '';
   }
 
-  function pickRating(id: string, rating: FeedbackRating) {
-    setPendingRating((p) => ({ ...p, [id]: p[id] === rating ? null : rating }));
-    setRatingSaved((s) => ({ ...s, [id]: false }));
-  }
-
-  async function saveRating(id: string, row: ChatQueryLogRow) {
+  // Saves immediately -- no separate "Save rating" button. rating=null
+  // clears it (unrating). context is only ever persisted alongside
+  // 'partially_answered'; any other rating always clears it server-side,
+  // matching submitChatFeedback's own posture (context is a note on WHY
+  // a partial miss happened, meaningless for the other two ratings).
+  async function applyRating(id: string, rating: FeedbackRating | null, context: string) {
     setRatingSaving((s) => ({ ...s, [id]: true }));
     setRatingError((e) => ({ ...e, [id]: '' }));
-    const rating = ratingFor(id, row);
-    const context = rating === 'partially_answered' ? contextFor(id, row).trim() : '';
+    const savedContext = rating === 'partially_answered' ? context.trim() : '';
     try {
       const res = await fetch(`/api/chat-feedback/${id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ feedback_rating: rating, feedback_context: context, feedback_reviewed_by: DEFAULT_REVIEWER })
+        body: JSON.stringify({
+          feedback_rating: rating,
+          feedback_context: savedContext,
+          feedback_reviewed_by: rating ? DEFAULT_REVIEWER : null
+        })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -110,19 +112,38 @@ export default function ChatFeedbackClient({
             ? {
                 ...r,
                 feedback_rating: rating,
-                feedback_context: context || null,
-                feedback_reviewed_by: DEFAULT_REVIEWER,
+                feedback_context: savedContext || null,
+                feedback_reviewed_by: rating ? DEFAULT_REVIEWER : null,
                 feedback_reviewed_at: new Date().toISOString()
               }
             : r
         )
       );
-      setRatingSaved((s) => ({ ...s, [id]: true }));
     } catch (err) {
       setRatingError((e) => ({ ...e, [id]: String(err) }));
     } finally {
       setRatingSaving((s) => ({ ...s, [id]: false }));
     }
+  }
+
+  // Clicking a rating pill saves immediately -- clicking the already-
+  // active one un-rates it. The confirmation log line below the buttons
+  // (driven directly off r.feedback_rating, not a separate transient
+  // flag) is what tells the admin the click actually took and what it
+  // recorded, replacing the old explicit "Save rating" button.
+  function pickRating(id: string, row: ChatQueryLogRow, rating: FeedbackRating) {
+    const next = ratingFor(id, row) === rating ? null : rating;
+    setPendingRating((p) => ({ ...p, [id]: next }));
+    applyRating(id, next, contextFor(id, row));
+  }
+
+  // The guidance-note textarea (partially_answered only) can't sensibly
+  // auto-save per keystroke, so it saves on blur instead -- still no
+  // explicit button, just "finish typing and click elsewhere."
+  function saveContextOnBlur(id: string, row: ChatQueryLogRow) {
+    const rating = ratingFor(id, row);
+    if (rating !== 'partially_answered') return;
+    applyRating(id, rating, contextFor(id, row));
   }
 
   // "Link the actually correct claim" / "write the correct answer" --
@@ -380,7 +401,7 @@ export default function ChatFeedbackClient({
                       rating === val ? RATING_BTN_ACTIVE_CLASS[val] : ''
                     }`}
                     disabled={!!ratingSaving[r.id]}
-                    onClick={() => pickRating(r.id, val)}
+                    onClick={() => pickRating(r.id, r, val)}
                   >
                     {RATING_LABEL[val]}
                   </button>
@@ -392,26 +413,18 @@ export default function ChatFeedbackClient({
                   className={styles.editInput}
                   value={contextFor(r.id, r)}
                   onChange={(e) => setPendingContext((p) => ({ ...p, [r.id]: e.target.value }))}
-                  placeholder="What should this have searched for? Guides retrieval the next time a similarly-worded question comes in."
+                  onBlur={() => saveContextOnBlur(r.id, r)}
+                  placeholder="What should this have searched for? Guides retrieval the next time a similarly-worded question comes in. Saves automatically when you click away."
                   rows={2}
                   disabled={!!ratingSaving[r.id]}
                 />
               )}
 
-              {rating !== null && (
-                <div className={styles.editActions} style={{ marginBottom: 10 }}>
-                  <button
-                    className={`${styles.btn} ${styles.btnApprove}`}
-                    disabled={!!ratingSaving[r.id]}
-                    onClick={() => saveRating(r.id, r)}
-                  >
-                    {ratingSaving[r.id] ? 'Saving…' : 'Save rating'}
-                  </button>
-                </div>
-              )}
               {ratingError[r.id] && <div className={`${styles.decisionNote} ${styles.decisionError}`}>{ratingError[r.id]}</div>}
-              {ratingSaved[r.id] && !ratingError[r.id] && (
-                <div className={`${styles.decisionNote} ${styles.decisionSaved}`}>Saved.</div>
+              {!ratingError[r.id] && r.feedback_rating && (
+                <div className={styles.savedLog}>
+                  ✓ Rated &ldquo;{RATING_LABEL[r.feedback_rating]}&rdquo;{ratingSaving[r.id] ? ' — saving…' : ' — saved.'}
+                </div>
               )}
 
               {needsCorrection && (
