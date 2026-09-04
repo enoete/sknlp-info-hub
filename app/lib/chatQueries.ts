@@ -115,6 +115,16 @@ export interface MostClickedSuggestion {
   click_count: number;
 }
 
+// The page always asks for exactly this many -- a shared constant (not
+// two places quietly agreeing on the number 10) so the panel's own
+// title stays honest if this is ever changed. This is a display cap
+// only: the query below still aggregates every is_suggestion=true row
+// to rank them (backed by idx_chat_queries_suggestion_question, a
+// partial index scoped to exactly those rows), it just only returns the
+// top MOST_CLICKED_LIMIT — the panel never grows past this regardless
+// of how many total questions accumulate in chat_queries.
+export const MOST_CLICKED_LIMIT = 10;
+
 // "Which pre-filled questions get clicked the most" — grouped on the
 // exact question text, since a suggestion pill's label IS the question
 // that gets logged when clicked (see ChatClient.tsx's ask()).

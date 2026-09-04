@@ -2,6 +2,15 @@
 
 import { useMemo, useState } from 'react';
 import styles from './chat-feedback.module.css';
+// Only a type-only import from chatQueries.ts here -- erased at compile
+// time, never bundled. A VALUE import (even of an unrelated constant)
+// would pull the whole module into the client bundle, including db.ts's
+// server-only `pg` pool -- confirmed the hard way: MOST_CLICKED_LIMIT
+// used to be imported directly here and broke the build with "Module
+// not found: Can't resolve 'net'/'tls'" (pg's Node-only socket code
+// has no browser equivalent). The limit is passed as a prop instead
+// (see page.tsx), which is the server-only module's own value crossing
+// the server/client boundary as plain data, not as a shared import.
 import type { ChatQueryLogRow, MostClickedSuggestion, FeedbackRating } from '@/app/lib/chatQueries';
 import type { ClaimSearchResult } from '@/app/lib/reviewQueue';
 
@@ -54,10 +63,12 @@ const ORIGIN_TABS: { value: OriginFilter; label: string }[] = [
 
 export default function ChatFeedbackClient({
   initialLog,
-  mostClicked
+  mostClicked,
+  mostClickedLimit
 }: {
   initialLog: ChatQueryLogRow[];
   mostClicked: MostClickedSuggestion[];
+  mostClickedLimit: number;
 }) {
   const [log, setLog] = useState(initialLog);
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
@@ -309,7 +320,7 @@ export default function ChatFeedbackClient({
   return (
     <>
       <div className={styles.clickedPanel}>
-        <div className={styles.clickedTitle}>Most-clicked suggestions</div>
+        <div className={styles.clickedTitle}>Top {mostClickedLimit} Most-Clicked Suggested Questions</div>
         {mostClicked.length === 0 ? (
           <div className={styles.clickedEmpty}>No suggestion pills have been clicked yet.</div>
         ) : (

@@ -1,11 +1,11 @@
 import styles from './chat-feedback.module.css';
-import { getChatQueryLog, getMostClickedSuggestions } from '@/app/lib/chatQueries';
+import { getChatQueryLog, getMostClickedSuggestions, MOST_CLICKED_LIMIT } from '@/app/lib/chatQueries';
 import ChatFeedbackClient from './ChatFeedbackClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ChatFeedbackPage() {
-  const [log, mostClicked] = await Promise.all([getChatQueryLog(), getMostClickedSuggestions(10)]);
+  const [log, mostClicked] = await Promise.all([getChatQueryLog(), getMostClickedSuggestions(MOST_CLICKED_LIMIT)]);
 
   return (
     <main className="max-w-3xl mx-auto px-4 sm:px-9 py-8 sm:py-12">
@@ -20,7 +20,7 @@ export default async function ChatFeedbackPage() {
         </p>
       </div>
 
-      <ChatFeedbackClient initialLog={log} mostClicked={mostClicked} />
+      <ChatFeedbackClient initialLog={log} mostClicked={mostClicked} mostClickedLimit={MOST_CLICKED_LIMIT} />
     </main>
   );
 }
