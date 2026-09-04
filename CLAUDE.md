@@ -1223,6 +1223,15 @@ citation is ever deleted, only consolidated onto one claim).
 
 ## Curated-view noise filtering (`claims.featured`, decided 2026-08-31)
 
+**Superseded in part 2026-09-04** — see "Review Queue noise audit" below:
+isolated incidents (crime investigations, operational notices) are no
+longer extracted as searchable-but-hidden `featured=false` claims at
+all; this section's original chatbot-searchability rationale for that
+category was explicitly traded away in favor of a cleaner Review Queue.
+`featured=false` still applies exactly as described below to a claim
+that IS a genuine decision/initiative/achievement but merely isn't
+policy-significant (e.g. the Irish Town Primary School closure).
+
 Prompted directly: "we also need to do a site-wide audit and make sure
 we're not importing noise and generic news items. We need to focus on
 government-centered stuff. Rescuing people from a sinking ship is good.
@@ -2032,36 +2041,74 @@ or a private club/association's own event with no stated government
 funding or ministry involvement, is out of scope regardless of stance —
 using the Horsford case as the documented example directly in the
 prompt, same "write down the exact caught example" pattern used for the
-Basseterre High School stance bug. Stated explicitly as a *stricter* bar
-than `featured=false`: `featured=false` still requires genuine government
-activity underneath (an isolated incident, a ceremony, a routine
-statistic); a claim that fails the GOVERNMENT-ACTOR RULE has no
-government actor at all and must not be extracted as a candidate claim
-in the first place, at any `featured` value.
+Basseterre High School stance bug. A claim that fails the GOVERNMENT-ACTOR
+RULE has no government actor at all and must not be extracted as a
+candidate claim in the first place, at any `featured` value.
 
-**Live queue audited against the new rule** (141 pending claims,
-individually read, not sampled): the Horsford claim and one other genuine
-miss of the same kind — "St. Kitts and Nevis Table Tennis Summer Camp
+**Live queue audited against the rule** (141 pending claims, individually
+read, not sampled): two claims had no government actor at all —
+the Horsford claim and "St. Kitts and Nevis Table Tennis Summer Camp
 Program" (run by the private Table Tennis Association, no government
-funding or ministry stated) — were the only two with no government actor
-at all, and both were set `review_status='rejected'` (reversible, no
-source/citation deleted, same posture as every other reject in this
-project). The remaining 139 pending claims were confirmed to have a real
-government body as the actual actor (a named ministry, ordinance, Cabinet
-decision, state-owned enterprise, or official's own action) — including
-several already-correct `featured=false` calls on genuine-but-ceremonial
-government activity (a Ministry of Education back-to-school ceremony, a
-30th-anniversary NHC thanksgiving service, a SKELEC maintenance-outage
-notice, an RSCNPF homicide investigation) that were left as-is since
-those are exactly what `featured=false` is designed for, not what this
-new rule targets — no need to reject a real government action just
-because it's not policy-significant. Not a blanket sweep of the ~1,250
-already-approved claims — same "flag here, revisit as needed" posture as
-the un-finished sweeps already documented above (the `accomplishment_type
-IS NULL` stance-bug pass, the recent-claims dedup sweep); worth a
-similar full pass if this pattern recurs at volume in already-approved
-content, not assumed necessary yet since the sample checked here was
-clean.
+funding or ministry stated) — both set `review_status='rejected'`.
+
+**Correction, same day, prompted directly**: the first pass above left
+several `featured=false` claims in place on the theory that
+`featured=false` already handled them (a Ministry of Education
+back-to-school ceremony, a 30th-anniversary NHC thanksgiving service, a
+SKELEC maintenance-outage notice, an RSCNPF homicide investigation) —
+wrong. Direct correction from the client: "investigating a double
+homicide is NOT okay either... remember we're looking at decisions,
+initiatives, achievements, stuff like that. SKELEC planning islandwide
+outage should not make the cut. Those are notices." The distinction
+`featured` was drawing (real-government-activity-but-not-curated vs.
+no-government-actor-at-all) wasn't the distinction that mattered — the
+actual bar is whether the claim IS a decision, initiative, or
+achievement at all, full stop. An unfolding crime investigation, a
+scheduled utility outage notice, a ceremonial event with no new
+decision, and a bare statistic are not that, regardless of who the
+government actor is, and were still cluttering the Review Queue even at
+`featured=false` — the client's complaint was specifically about admin
+review-queue load, which `featured=false` never addressed (it only ever
+gated the public curated views — Dashboard/Timeline — never the Review
+Queue, which shows every `pending_review` row regardless of `featured`).
+
+Explicitly weighed against the original 2026-08-31 "Curated-view noise
+filtering" rationale for keeping isolated incidents searchable-but-hidden
+for the chatbot ("some of the stuff can be used to answer chatbot-related
+questions") — presented to the client as an explicit tradeoff, who chose
+to stop extracting this content entirely rather than keep it searchable.
+**`featured=false` is now reserved only for a claim that DOES honestly
+earn a real `accomplishment_type` but is minor/reactive rather than a
+policy win** (the existing "Immediate Closure of Irish Town Primary
+School" example from the stance-bug section above is still the right
+call under the new bar — a genuine current-government action, just not
+a policy win). It is no longer a way to keep a non-qualifying claim
+searchable. Both extraction scripts' `candidate_claims` description
+gained a **DECISIONS/INITIATIVES/ACHIEVEMENTS ONLY RULE** spelling this
+out with the exact caught examples (the homicide investigation, the
+SKELEC notice), and the `featured` field description was tightened to
+match — a citizen asking the chatbot about a specific ongoing
+investigation or a maintenance outage should now get "no record found,"
+a deliberate scope narrowing, not a bug.
+
+**Nine more pending claims failed the corrected bar** and were rejected
+in the same pass: the SKELEC and RSCNPF claims above, the Ministry of
+Education back-to-school ceremony, the NHC 30th-anniversary ceremony, a
+Kalinago 400th-anniversary commemoration ceremony, a Tourism Development
+Levy monthly-collections statistic, an H1 2026 crime-reduction
+statistic, RIDU's returning-nationals facilitation statistics, and a
+tabled Solid Waste Management Corporation financial statement (a routine
+legislative filing, not a discretionary decision — none of the four
+`accomplishment_type` values honestly fit it, which was itself the
+tell). One `featured=false` opposition-side claim was deliberately kept
+— a caller's allegation that a specific $500 monthly assistance benefit
+was cancelled — since that's a specific, substantive allegation about an
+actual government program, not a routine notice, and callers are
+explicitly protected content per "Call-in callers" above. Not a blanket
+sweep of the ~1,250 already-approved claims — same "flag here, revisit
+as needed" posture as the other unfinished sweeps documented above;
+worth a similar full pass if this pattern recurs at volume in
+already-approved content.
 
 ## What can be mocked/stubbed for the demo, what can't
 

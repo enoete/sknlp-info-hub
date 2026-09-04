@@ -167,9 +167,21 @@ RESPONSE_SCHEMA = {
                 "NOT in scope regardless of stance or how favorably it's framed (confirmed real case, "
                 "2026-09-04: a private company's sponsorship of a talent competition, aired by a "
                 "government-aligned broadcaster, was wrongly extracted as an SKNLP accomplishment -- see "
-                "extract_from_video.py's matching rule for the full example). This is stricter than "
-                "featured=false, which still requires genuine government activity underneath; a claim "
-                "failing this rule has no government actor at all and must not be extracted."
+                "extract_from_video.py's matching rule for the full example). A claim failing this rule "
+                "has no government actor at all and must not be extracted, at any featured value. "
+                "DECISIONS/INITIATIVES/ACHIEVEMENTS ONLY RULE (corrected 2026-09-04): for "
+                "stance='accomplishment', only extract a claim that honestly earns one of the four real "
+                "accomplishment_type values -- a genuine decision, initiative, or achievement. Do NOT "
+                "extract, at any featured value: a routine operational/service notice (a scheduled "
+                "utility outage, a routine public-service announcement with no decision/policy content); "
+                "an active investigation into a crime or incident reported as still unfolding (a "
+                "completed enforcement action under a stated initiative, or a new law passed, IS in "
+                "scope); a purely ceremonial or social event with no new decision attached; or a bare "
+                "routine statistic with no accompanying decision or initiative. See "
+                "extract_from_video.py's matching rule for the full confirmed examples (an unfolding "
+                "homicide investigation, a maintenance-outage notice) that prompted this correction -- "
+                "these were cluttering the admin Review Queue even at featured=false, which is no longer "
+                "an acceptable way to keep a non-qualifying claim in the corpus."
             ),
             "items": {
                 "type": "object",
@@ -219,14 +231,13 @@ RESPONSE_SCHEMA = {
                         "description": (
                             "true for genuine government policy, decision, project, budget item, or "
                             "initiative (or, for opposition_statement, a specific documented allegation "
-                            "about government performance). false for a real, worth-keeping-searchable "
-                            "claim that is nonetheless an isolated incident rather than a policy/decision "
-                            "-- a specific rescue operation, a specific arrest, a routine crime-statistic "
-                            "mention, a ceremonial or social event with no policy content, general human-"
-                            "interest news. Rule of thumb: could this specific fact reasonably be "
-                            "described using one of the four accomplishment_type categories (a completed "
-                            "deliverable, a policy, a strategic commitment, an ongoing program)? If not, "
-                            "it's very likely featured=false, not a stretch to force it into one anyway."
+                            "about government performance). false ONLY for a claim that DOES honestly "
+                            "earn a real accomplishment_type but is nonetheless minor/reactive rather "
+                            "than a policy win. Do NOT use featured=false to still extract a claim that "
+                            "isn't a real decision/initiative/achievement at all -- a routine notice, an "
+                            "unfolding crime investigation, a ceremonial event with no new decision, or a "
+                            "bare statistic must not be extracted as a candidate_claim in the first place "
+                            "(see the DECISIONS/INITIATIVES/ACHIEVEMENTS ONLY RULE above)."
                         ),
                     },
                 },
