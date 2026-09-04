@@ -1992,6 +1992,77 @@ visual difference between typed and pre-filled questions.
   the existing rating filter, rather than a single toggle — the two axes
   are orthogonal and both need their own counts.
 
+## Review Queue noise audit — the GOVERNMENT-ACTOR RULE (2026-09-04)
+
+Prompted directly by a real example spotted in the live Review Queue: "S.L.
+Horsford Named Title Sponsor for 2026 Kittitian Superstar," typed
+`stance='accomplishment'`, `accomplishment_type='Strategic Decision'`,
+`featured=true`. Traced to its source: "S.L. Horsford & Company Limited
+partnered with ZIZ Broadcasting Corporation as the title sponsor for the
+2026 Kittitian Superstar competition" — a private company's own
+sponsorship/marketing decision, aired by ZIZ, with **no government body
+as a party to it at all**. Framed by the client as generic noise the
+review queue shouldn't be loaded with in the first place, not just a
+mis-typed claim to fix after the fact.
+
+**Root cause: a real gap in the extraction scope rule, not a one-off
+model mistake.** `extract_from_video.py`/`extract_from_article.py`'s
+`CRITICAL SCOPE RULE` (see "Stance misattribution bug" above) only ever
+asks *which administration* a claim is about — it never asked whether a
+government body is an actual party to the action at all. A government-
+aligned channel airing a private company's own news sailed straight
+through that check, and the `featured` field's "isolated incident vs.
+policy" self-check doesn't catch it either, because the underlying
+problem isn't "not policy-significant enough" (which is exactly what
+`featured=false` is for — see "Curated-view noise filtering" above) —
+it's that there's no government actor in the claim at all. `featured`
+being false still leaves the claim sitting in the Review Queue for a
+human to reject one at a time; the actual fix has to be upstream of
+extraction, not a downstream flag.
+
+**Fix**: both scripts' `candidate_claims` schema description gained a new
+explicit **GOVERNMENT-ACTOR RULE**, checked alongside the existing scope
+rule: a claim is only in scope if a government body itself — a ministry,
+a statutory/state-owned corporation (NHC, NEVLEC, SKELEC, Water
+Services, Social Security Board, etc.), or a government official acting
+in that official capacity — is the one actually taking the action,
+decision, or expenditure described. A government-aligned channel simply
+airing or reporting on a private company's sponsorship/business decision,
+or a private club/association's own event with no stated government
+funding or ministry involvement, is out of scope regardless of stance —
+using the Horsford case as the documented example directly in the
+prompt, same "write down the exact caught example" pattern used for the
+Basseterre High School stance bug. Stated explicitly as a *stricter* bar
+than `featured=false`: `featured=false` still requires genuine government
+activity underneath (an isolated incident, a ceremony, a routine
+statistic); a claim that fails the GOVERNMENT-ACTOR RULE has no
+government actor at all and must not be extracted as a candidate claim
+in the first place, at any `featured` value.
+
+**Live queue audited against the new rule** (141 pending claims,
+individually read, not sampled): the Horsford claim and one other genuine
+miss of the same kind — "St. Kitts and Nevis Table Tennis Summer Camp
+Program" (run by the private Table Tennis Association, no government
+funding or ministry stated) — were the only two with no government actor
+at all, and both were set `review_status='rejected'` (reversible, no
+source/citation deleted, same posture as every other reject in this
+project). The remaining 139 pending claims were confirmed to have a real
+government body as the actual actor (a named ministry, ordinance, Cabinet
+decision, state-owned enterprise, or official's own action) — including
+several already-correct `featured=false` calls on genuine-but-ceremonial
+government activity (a Ministry of Education back-to-school ceremony, a
+30th-anniversary NHC thanksgiving service, a SKELEC maintenance-outage
+notice, an RSCNPF homicide investigation) that were left as-is since
+those are exactly what `featured=false` is designed for, not what this
+new rule targets — no need to reject a real government action just
+because it's not policy-significant. Not a blanket sweep of the ~1,250
+already-approved claims — same "flag here, revisit as needed" posture as
+the un-finished sweeps already documented above (the `accomplishment_type
+IS NULL` stance-bug pass, the recent-claims dedup sweep); worth a
+similar full pass if this pattern recurs at volume in already-approved
+content, not assumed necessary yet since the sample checked here was
+clean.
+
 ## What can be mocked/stubbed for the demo, what can't
 
 - **Can stub**: the ingestion agent (YouTube/sknis scraping), voice

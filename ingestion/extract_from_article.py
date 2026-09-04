@@ -73,12 +73,23 @@ CONTENT_WINDOW_CHARS = 12000  # generous fixed window from the content div's sta
 # "don't invent a claim" conservatism, not worth a real HTML parser
 # dependency for.
 
+# gov.kn's "National Accomplishments" sector pages (added 2026-09-01) use
+# Elementor, not the classic WordPress `entry-content` theme wrapper --
+# confirmed live these pages have NO `entry-content` div at all, and are
+# far denser than a normal press release (the healthcare page alone has
+# 51 achievement bullets across ~39KB of markup from the post div's start
+# to its own "Share Article" footer marker), so the SKNIS-tuned 12000-char
+# window would truncate most of the real content. `data-elementor-type="wp-post"`
+# is the Elementor equivalent -- the one div that wraps a post's real body
+# on this theme -- with a larger window sized for a dense achievements list.
+GOVKN_CONTENT_WINDOW_CHARS = 60000
+
 
 def fetch_article(url: str) -> dict:
-    """Fetches one SKNIS article page directly and extracts title +
-    body text from its HTML. Used for a single-URL run; the RSS-based
-    discovery path (run_website_discovery.py) already has title/body
-    from the feed itself and skips this second fetch.
+    """Fetches one article page directly and extracts title + body text
+    from its HTML. Used for a single-URL run; the RSS-based discovery
+    path (run_website_discovery.py) already has title/body from the feed
+    itself and skips this second fetch.
 
     Targets the theme's `entry-content` div specifically, not a generic
     `<article>` tag -- confirmed live 2026-08-31 that this WordPress
@@ -86,7 +97,10 @@ def fetch_article(url: str) -> dict:
     matching the first `<article>...</article>` pair grabbed a widget's
     headline (a different, unrelated post) instead of the real content
     every time. `entry-content` only ever appears once, on the real
-    post body."""
+    post body. Falls back to the Elementor wp-post wrapper (see above),
+    then to the full raw page as a last resort -- the extraction
+    prompt's own "don't invent a claim" conservatism handles any
+    remaining nav/footer noise fine, same as always."""
     resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
     resp.raise_for_status()
     html = resp.text
@@ -97,7 +111,19 @@ def fetch_article(url: str) -> dict:
         start = content_match.end()
         body_html = html[start:start + CONTENT_WINDOW_CHARS]
     else:
-        body_html = html
+        # data-elementor-type="wp-post" alone isn't specific enough --
+        # confirmed live this theme also stamps it on the site's
+        # header/footer template regions (data-elementor-post-type=
+        # "ova_framework_hf_el"), and those come FIRST in the page, so a
+        # bare search grabbed the nav/footer template instead of the real
+        # post. data-elementor-post-type="post" is the actual blog-post
+        # wrapper.
+        elementor_match = re.search(r'data-elementor-type="wp-post"[^>]*data-elementor-post-type="post"', html, re.IGNORECASE)
+        if elementor_match:
+            start = elementor_match.end()
+            body_html = html[start:start + GOVKN_CONTENT_WINDOW_CHARS]
+        else:
+            body_html = html
     return {"title": title, "body_text": strip_html(body_html)}
 
 
@@ -132,7 +158,18 @@ RESPONSE_SCHEMA = {
                 "see extract_from_video.py's matching rule for the full example). Only extract such a "
                 "statement if the article's own substance is a CURRENT government action taken in "
                 "response (an audit, a legislative fix, funds recovered) -- then the claim is about "
-                "that current action, with the history as context only."
+                "that current action, with the history as context only. "
+                "GOVERNMENT-ACTOR RULE: a claim is only in scope if a government body itself -- a "
+                "ministry, a statutory/state-owned corporation, or an official acting in that official "
+                "capacity -- is the one actually taking the action/decision/expenditure described. An "
+                "article merely reporting on a PRIVATE company's own business decision, sponsorship, or "
+                "a private club/association's own event, with no government body as a direct party, is "
+                "NOT in scope regardless of stance or how favorably it's framed (confirmed real case, "
+                "2026-09-04: a private company's sponsorship of a talent competition, aired by a "
+                "government-aligned broadcaster, was wrongly extracted as an SKNLP accomplishment -- see "
+                "extract_from_video.py's matching rule for the full example). This is stricter than "
+                "featured=false, which still requires genuine government activity underneath; a claim "
+                "failing this rule has no government actor at all and must not be extracted."
             ),
             "items": {
                 "type": "object",

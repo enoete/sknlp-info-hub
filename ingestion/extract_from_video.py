@@ -93,9 +93,30 @@ CHANNEL_HOSTS = {
     "Straight Talk": "Ian \"Patches\" Liburd",
 }
 
+# Expanded 2026-09-01, prompted directly by the gov.kn "National
+# Accomplishments" source (see CLAUDE.md): its own "Sports & Entertainment"
+# sector page had nowhere honest to land -- all 3 of its claims got
+# force-fitted into 'Other'. Auditing the existing 'Other' bucket (36
+# claims) surfaced two more real, coherent clusters that had been
+# silently absorbed into 'Governance' and 'Other': a distinct digital-
+# government/IT cluster (eTA, SMARTS, digital ID, "Voice It" AI assistant
+# -- 13+ claims, mostly diluting 'Governance' between political/legal
+# process and e-government systems) and roads/public-works content with
+# no honest home at all. 'Sports' and 'Culture & Entertainment' are two
+# SEPARATE categories, per explicit instruction (2026-09-01) -- sports
+# (stadiums, athletics, cricket) reads as a distinct enough cluster on
+# its own to warrant its own category rather than folding into culture;
+# 'Entertainment' on its own would start near-empty (no distinctly-
+# entertainment content in the corpus yet, only culture/arts), so it's
+# merged with Culture rather than given a fourth, likely-empty slot.
+# Digital HEALTH tools (NDHIS, WellCare card) stay under Healthcare on
+# purpose, not IT & Digital Governance -- the story there is the health
+# delivery outcome, not the technology itself.
 CATEGORIES = [
     "Economy", "Water", "Healthcare", "Education", "Housing", "Agriculture",
-    "Security", "Tourism", "Energy", "Social Protection", "Governance", "Other"
+    "Security", "Tourism", "Energy", "Social Protection", "Governance",
+    "Sports", "Culture & Entertainment", "Environment", "Infrastructure",
+    "Information Technology & Digital Governance", "Other"
 ]
 
 SENTIMENTS = ["positive", "neutral", "negative", "critical"]
@@ -195,7 +216,28 @@ RESPONSE_SCHEMA = {
                 "reverse. Quick self-check: if the only honest accomplishment_type for a claim would be "
                 "none of the four real categories (i.e. you would need to leave it blank or force a "
                 "bad fit), that is itself a strong signal the claim is actually excluded scope, not a "
-                "real accomplishment -- don't extract a claim you can't honestly type."
+                "real accomplishment -- don't extract a claim you can't honestly type. "
+                "GOVERNMENT-ACTOR RULE, checked together with the rule above: a claim is only in scope "
+                "if a government body itself -- a ministry, a statutory/state-owned corporation (NHC, "
+                "NEVLEC, SKELEC, Water Services, Social Security Board, etc.), or a government minister/"
+                "official acting in that official capacity -- is the one actually taking the action, "
+                "decision, or expenditure the claim describes. A government-aligned channel (ZIZ, "
+                "SKNIS) simply airing or reporting on a PRIVATE company's own business decision, "
+                "sponsorship, product launch, or a private club/association's own event -- with no "
+                "government ministry, agency, or official as a direct party to the action itself -- is "
+                "NOT in scope, regardless of stance, even when the coverage is favorable or frames it as "
+                "good news for the country. Confirmed real case, 2026-09-04: 'S.L. Horsford & Company "
+                "Limited partnered with ZIZ Broadcasting Corporation as the title sponsor for the 2026 "
+                "Kittitian Superstar competition' was wrongly extracted as an SKNLP 'Strategic Decision' "
+                "-- no government body was a party to that sponsorship deal, it is a private company's "
+                "own marketing decision that a state broadcaster happened to air. A named private "
+                "sports club/association running its own program (e.g. a sporting association's summer "
+                "camp) with no stated government funding or ministry involvement is the same failure "
+                "mode. This is a stricter bar than featured=false: featured=false still requires the "
+                "underlying fact to be genuine government activity (an isolated incident, a ceremony, a "
+                "routine statistic) that's merely not policy-significant; a claim that fails the "
+                "GOVERNMENT-ACTOR RULE has no government actor at all and must not be extracted as a "
+                "candidate_claim in the first place, at any featured value."
             ),
             "items": {
                 "type": "object",
