@@ -39,6 +39,11 @@ const RATING_TAG_CLASS: Record<FeedbackRating, string> = {
   not_answered: styles.tagRatingNot
 };
 
+// No admin auth exists yet (see CLAUDE.md) -- the real per-user login
+// this stands in for will replace this constant outright, not extend it
+// with a name field on every rating.
+const DEFAULT_REVIEWER = 'admin';
+
 type OriginFilter = 'all' | 'suggestion' | 'typed';
 
 const ORIGIN_TABS: { value: OriginFilter; label: string }[] = [
@@ -58,12 +63,15 @@ export default function ChatFeedbackClient({
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all');
 
-  // Rating form -- one row's pending rating/context/reviewer, keyed by
+  // Rating form -- one row's pending rating/context, keyed by
   // chat_queries.id, seeded from whatever was already saved so re-opening
-  // a reviewed row doesn't blank it out.
+  // a reviewed row doesn't blank it out. No reviewer-name field: there's
+  // no real admin auth yet (see CLAUDE.md), so every rating is attributed
+  // to the constant DEFAULT_REVIEWER below rather than asking for a name
+  // on every single click -- a real login will replace this outright once
+  // one exists, not extend it.
   const [pendingRating, setPendingRating] = useState<Record<string, FeedbackRating | null>>({});
   const [pendingContext, setPendingContext] = useState<Record<string, string>>({});
-  const [pendingReviewer, setPendingReviewer] = useState<Record<string, string>>({});
   const [ratingSaving, setRatingSaving] = useState<Record<string, boolean>>({});
   const [ratingError, setRatingError] = useState<Record<string, string>>({});
   const [ratingSaved, setRatingSaved] = useState<Record<string, boolean>>({});
@@ -73,9 +81,6 @@ export default function ChatFeedbackClient({
   }
   function contextFor(id: string, row: ChatQueryLogRow): string {
     return id in pendingContext ? pendingContext[id] : row.feedback_context ?? '';
-  }
-  function reviewerFor(id: string, row: ChatQueryLogRow): string {
-    return id in pendingReviewer ? pendingReviewer[id] : row.feedback_reviewed_by ?? '';
   }
 
   function pickRating(id: string, rating: FeedbackRating) {
@@ -88,12 +93,11 @@ export default function ChatFeedbackClient({
     setRatingError((e) => ({ ...e, [id]: '' }));
     const rating = ratingFor(id, row);
     const context = rating === 'partially_answered' ? contextFor(id, row).trim() : '';
-    const reviewer = reviewerFor(id, row).trim();
     try {
       const res = await fetch(`/api/chat-feedback/${id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ feedback_rating: rating, feedback_context: context, feedback_reviewed_by: reviewer })
+        body: JSON.stringify({ feedback_rating: rating, feedback_context: context, feedback_reviewed_by: DEFAULT_REVIEWER })
       });
       const data = await res.json();
       if (!res.ok) {
@@ -107,7 +111,7 @@ export default function ChatFeedbackClient({
                 ...r,
                 feedback_rating: rating,
                 feedback_context: context || null,
-                feedback_reviewed_by: reviewer || null,
+                feedback_reviewed_by: DEFAULT_REVIEWER,
                 feedback_reviewed_at: new Date().toISOString()
               }
             : r
@@ -396,14 +400,6 @@ export default function ChatFeedbackClient({
 
               {rating !== null && (
                 <div className={styles.editActions} style={{ marginBottom: 10 }}>
-                  <input
-                    className={styles.editInput}
-                    style={{ marginBottom: 0, flex: 1 }}
-                    value={reviewerFor(r.id, r)}
-                    onChange={(e) => setPendingReviewer((p) => ({ ...p, [r.id]: e.target.value }))}
-                    placeholder="Your name"
-                    disabled={!!ratingSaving[r.id]}
-                  />
                   <button
                     className={`${styles.btn} ${styles.btnApprove}`}
                     disabled={!!ratingSaving[r.id]}
