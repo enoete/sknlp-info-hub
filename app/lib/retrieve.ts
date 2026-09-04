@@ -49,6 +49,63 @@ export interface RetrievedRow {
   match_type: 'direct' | 'related' | 'manual_clarification';
 }
 
+// Lets a follow-up like "when did that happen?" resolve against the
+// previous turn's topic before hitting retrieve() -- retrieve() only ever
+// does a literal full-text search, so an ambiguous follow-up with no
+// context would search on words like "that"/"happen" and turn up nothing
+// or noise. Deliberately narrow: the caller (route.ts) only ever passes
+// the SINGLE immediately-preceding turn, never a running history -- see
+// CLAUDE.md-style reasoning in ChatClient.tsx for why (avoids one stale
+// topic bleeding into an unrelated later question). Fails OPEN (returns
+// the question unchanged) on any missing key/error/empty response -- a
+// failed rewrite just means this behaves exactly as it did before this
+// feature existed, never a broken or blocked response. This only ever
+// changes what string gets searched/answered against; it does not
+// weaken the actual grounding check in route.ts (citation URL must still
+// match a real retrieved row) at all.
+export async function rewriteFollowUpQuestion(
+  question: string,
+  previousQuestion: string,
+  previousClaimTitle: string | null,
+  previousSummary: string | null
+): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey === 'sk-ant-xxxx') return question;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 120,
+        system:
+          "Rewrite NEW QUESTION into a standalone question a keyword search engine can act on, using PREVIOUS QUESTION/ANSWER only to resolve pronouns or implicit references (\"that\", \"it\", \"when did that happen\", \"who said that\", \"what about before then\"). If NEW QUESTION is already standalone and clearly unrelated to the previous turn, return it completely unchanged. Never answer the question. Never add any fact not already present in NEW QUESTION or in the previous turn's own title/summary. Reply with ONLY the rewritten question text and nothing else -- no preamble, no quotes.",
+        messages: [
+          {
+            role: 'user',
+            content: `PREVIOUS QUESTION: ${previousQuestion}
+PREVIOUS ANSWER TITLE: ${previousClaimTitle ?? '(no record was found for the previous question)'}
+PREVIOUS ANSWER SUMMARY: ${previousSummary ?? '(no record was found for the previous question)'}
+
+NEW QUESTION: ${question}`
+          }
+        ]
+      })
+    });
+    if (!res.ok) return question;
+    const data = await res.json();
+    const text = (data.content ?? []).find((b: any) => b.type === 'text')?.text;
+    return typeof text === 'string' && text.trim() ? text.trim() : question;
+  } catch {
+    return question;
+  }
+}
+
 // Real retrieval against Postgres full-text search — no embeddings (no
 // Voyage AI key yet). Builds an OR-of-stemmed-lexemes tsquery rather than
 // websearch_to_tsquery's implicit AND: AND semantics turned out to exclude

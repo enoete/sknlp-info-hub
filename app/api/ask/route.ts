@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit, getClientIp } from '@/app/lib/rate-limit';
-import { retrieve, RetrievedRow } from '@/app/lib/retrieve';
+import { retrieve, rewriteFollowUpQuestion, RetrievedRow } from '@/app/lib/retrieve';
 import { getFollowUpQuestions } from '@/app/lib/suggestions';
-import { logChatQuery } from '@/app/lib/chatQueries';
+import { logChatQuery, getAdminSearchHint } from '@/app/lib/chatQueries';
 import { CHATBOT_SYSTEM_PROMPT } from './system-prompt';
 
 export const dynamic = 'force-dynamic';
@@ -90,7 +90,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { question?: string };
+  let body: {
+    question?: string;
+    previous_question?: string;
+    previous_claim_title?: string;
+    previous_summary?: string;
+    is_suggestion?: boolean;
+  };
   try {
     body = await req.json();
   } catch {
@@ -102,10 +108,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'question is required' }, { status: 400 });
   }
 
+  // Follow-up support: the client (ChatClient.tsx) sends only the SINGLE
+  // immediately-preceding turn, never a running history -- see
+  // rewriteFollowUpQuestion's own comment for why. searchQuestion is what
+  // actually gets searched and answered against; the raw `question` is
+  // still what gets logged to chat_queries below, so "most asked
+  // questions" stays natural human wording, not a synthesized standalone
+  // rephrasing.
+  const previousQuestion = (body.previous_question ?? '').trim();
+  let searchQuestion = question;
+  let rewrittenQuestion: string | null = null;
+  if (previousQuestion) {
+    searchQuestion = await rewriteFollowUpQuestion(
+      question,
+      previousQuestion,
+      body.previous_claim_title ?? null,
+      body.previous_summary ?? null
+    );
+    if (searchQuestion !== question) rewrittenQuestion = searchQuestion;
+  }
+
+  const isSuggestion = body.is_suggestion === true;
+
+  // Admin answer-quality feedback loop (see CLAUDE.md): an admin who
+  // reviewed a past question that the engine "kinda missed" can leave a
+  // note on what it should REALLY have searched for. A cheap pg_trgm
+  // similarity match (not an LLM call — this runs on every question) is
+  // appended to what's actually sent to retrieve() below, broadening
+  // recall without changing what the model is told the question was —
+  // see getAdminSearchHint's own comment for the known paraphrase-recall
+  // gap. Never allowed to fail the request if the lookup itself errors.
+  const adminHint = await getAdminSearchHint(searchQuestion).catch(() => null);
+  const retrievalQuery = adminHint ? `${searchQuestion} ${adminHint}` : searchQuestion;
+
   let retrieved: RetrievedRow[];
   const _t0 = Date.now();
   try {
-    retrieved = await retrieve(question);
+    retrieved = await retrieve(retrievalQuery);
     console.error(`[timing] retrieve() took ${Date.now() - _t0}ms, ${retrieved.length} rows`);
   } catch (err) {
     // DB failure -> safe error, never a fabricated answer.
@@ -114,8 +153,8 @@ export async function POST(req: NextRequest) {
 
   // Hard gate: nothing matched at all -> answer directly, no LLM call.
   if (retrieved.length === 0) {
-    await logChatQuery(question, false, null).catch(() => {});
-    return safeNoRecord(0);
+    await logChatQuery(question, false, null, isSuggestion).catch(() => {});
+    return safeNoRecord(0, { rewritten_question: rewrittenQuestion, admin_hint_applied: !!adminHint });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -155,7 +194,7 @@ published_at: ${c.published_at ?? 'unknown'}${
     )
     .join('\n\n');
 
-  const userMessage = `User question: "${question}"
+  const userMessage = `User question: "${searchQuestion}"
 
 Retrieved context (only source of truth — do not use anything outside this):
 ${contextBlock}`;
@@ -226,7 +265,7 @@ ${contextBlock}`;
   if (answer.found) {
     const validUrls = new Set(retrieved.map((c) => c.origin_url));
     if (!answer.citation?.url || !validUrls.has(answer.citation.url) || !answer.claim_title) {
-      await logChatQuery(question, false, null).catch(() => {});
+      await logChatQuery(question, false, null, isSuggestion).catch(() => {});
       return safeNoRecord(retrieved.length, {
         _validation_failure: 'model citation did not match a retrieved source; failed closed'
       });
@@ -251,13 +290,15 @@ ${contextBlock}`;
     followUpSuggestions = await getFollowUpQuestions(realClaimId, matchedClaim.category).catch(() => []);
   }
 
-  await logChatQuery(question, answer.found, realClaimId).catch(() => {});
+  await logChatQuery(question, answer.found, realClaimId, isSuggestion).catch(() => {});
 
   return NextResponse.json({
     ...answer,
     no_record_message: answer.found ? undefined : answer.no_record_message || NO_RECORD_FALLBACK,
     retrieval_count: retrieved.length,
     retrieved_titles: retrieved.map((c) => c.title), // for debugging/demo transparency only
+    rewritten_question: rewrittenQuestion, // for debugging/demo transparency only
+    admin_hint_applied: !!adminHint, // for debugging/demo transparency only — see getAdminSearchHint
     follow_up_suggestions: followUpSuggestions
   });
 }

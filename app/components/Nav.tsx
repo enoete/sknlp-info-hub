@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import styles from './nav.module.css';
@@ -38,6 +39,16 @@ const BROWSE_LINKS: NavLink[] = [
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M8 3v18M16 3v18M3 8h5M16 8h5M3 16h5M16 16h5" />
+      </svg>
+    )
+  },
+  {
+    href: '/topics',
+    label: 'Both Sides',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-4.3-4.3" />
       </svg>
     )
   },
@@ -91,20 +102,100 @@ const INTERNAL_LINKS: NavLink[] = [
         <path d="M3 17l6-6 4 4 8-8M15 5h6v6" />
       </svg>
     )
+  },
+  {
+    href: '/source-manager/opposition-pulse',
+    label: 'Opposition Pulse',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M3 12h4l3 8 4-16 3 8h4" />
+      </svg>
+    )
+  },
+  {
+    href: '/chat-feedback',
+    label: 'Chat Feedback',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        <path d="M8 10h8M8 13h5" />
+      </svg>
+    )
   }
 ];
 
-function isActive(pathname: string, href: string): boolean {
+function matches(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/';
   return pathname === href || pathname.startsWith(href + '/');
 }
 
+// Source Manager's own nav links are prefixes of its sub-pages'
+// (/source-manager vs /source-manager/suggestions and
+// /source-manager/opposition-pulse), so a naive per-link prefix check
+// highlighted BOTH "Source Manager" and the sub-page you were actually
+// on -- reported directly: buttons in the Internal section stayed
+// highlighted after clicking something else. Fixed by picking exactly
+// one active link sitewide: whichever matching href is the longest
+// (most specific), never more than one at a time.
+function getActiveHref(pathname: string, links: NavLink[]): string | null {
+  let best: string | null = null;
+  for (const link of links) {
+    if (matches(pathname, link.href) && (!best || link.href.length > best.length)) {
+      best = link.href;
+    }
+  }
+  return best;
+}
+
 export default function Nav() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const activeHref = getActiveHref(pathname, [...BROWSE_LINKS, ...INTERNAL_LINKS]);
+
+  // Close the drawer on every route change -- otherwise it stays open
+  // after tapping a link and the new page renders underneath it.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Lock background scroll while the mobile drawer is open -- standard
+  // off-canvas-nav expectation, and without it the page behind the
+  // drawer scrolls along with a swipe meant for the menu.
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [open]);
 
   return (
-    <nav className={styles.sidebar}>
-      <Link href="/" className={styles.wordmark}>
+    <>
+      <div className={styles.mobileBar}>
+        <Link href="/" className={styles.mobileWordmark}>
+          <div className={styles.pin}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div className={styles.wordmarkTitle}>SKNLP</div>
+        </Link>
+        <button
+          type="button"
+          className={styles.menuButton}
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            {open ? <path d="M18 6L6 18M6 6l12 12" /> : <path d="M3 6h18M3 12h18M3 18h18" />}
+          </svg>
+        </button>
+      </div>
+
+      {open && <div className={styles.backdrop} onClick={() => setOpen(false)} aria-hidden="true" />}
+
+      <nav className={`${styles.sidebar} ${open ? styles.sidebarOpen : ''}`}>
+        <Link href="/" className={styles.wordmark}>
         <div className={styles.pin}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M5 13l4 4L19 7" />
@@ -122,7 +213,7 @@ export default function Nav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`${styles.navItem} ${isActive(pathname, link.href) ? styles.active : ''}`}
+            className={`${styles.navItem} ${link.href === activeHref ? styles.active : ''}`}
           >
             {link.icon}
             {link.label}
@@ -136,7 +227,7 @@ export default function Nav() {
           <Link
             key={link.href}
             href={link.href}
-            className={`${styles.navItem} ${styles.navItemInternal} ${isActive(pathname, link.href) ? styles.active : ''}`}
+            className={`${styles.navItem} ${styles.navItemInternal} ${link.href === activeHref ? styles.active : ''}`}
           >
             {link.icon}
             {link.label}
@@ -146,6 +237,7 @@ export default function Nav() {
       </div>
 
       <div className={styles.sidebarFooter}>Proof of concept &middot; not for public release</div>
-    </nav>
+      </nav>
+    </>
   );
 }

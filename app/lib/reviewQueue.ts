@@ -330,24 +330,39 @@ export interface ClaimSearchResult {
   event_date: string | null;
 }
 
-// Backing the review queue's "this completes an earlier claim" picker --
-// searches approved accomplishment claims (the only kind a later claim
-// can meaningfully "complete") by title, excluding the claim being edited
-// itself. Plain ILIKE, not full-text: this is a small, admin-facing
-// autocomplete, not the public retrieval path (see lib/retrieve.ts for
-// that), so a simpler match is fine.
-export async function searchAccomplishmentClaims(query: string, excludeId?: string): Promise<ClaimSearchResult[]> {
+// Backing admin-facing "search and pick a claim" pickers -- title-only
+// ILIKE, not full-text: this is a small autocomplete, not the public
+// retrieval path (see lib/retrieve.ts for that), so a simpler match is
+// fine. `stance` narrows the pool: 'accomplishment' (the review queue's
+// "this completes an earlier claim" / "clarify an opposition claim"
+// pickers -- only an accomplishment claim can meaningfully complete or
+// clarify anything) or 'any' (the chat feedback log's "link the actually
+// correct claim" picker -- a chatbot answer can legitimately cite either
+// stance, so that search shouldn't be narrower than what the bot itself
+// can retrieve).
+export async function searchApprovedClaims(
+  query: string,
+  excludeId?: string,
+  stance: 'accomplishment' | 'any' = 'accomplishment'
+): Promise<ClaimSearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
   const { rows } = await pool.query<ClaimSearchResult>(
     `SELECT id, title, accomplishment_type, to_char(event_date, 'YYYY-MM-DD') AS event_date
      FROM claims
-     WHERE stance = 'accomplishment' AND review_status = 'approved'
+     WHERE ($3 = 'any' OR stance = 'accomplishment') AND review_status = 'approved'
        AND title ILIKE $1
        AND ($2::uuid IS NULL OR id != $2)
      ORDER BY event_date DESC NULLS LAST
      LIMIT 10`,
-    [`%${trimmed}%`, excludeId ?? null]
+    [`%${trimmed}%`, excludeId ?? null, stance]
   );
   return rows;
+}
+
+// Kept as a thin, explicitly-named wrapper -- every existing call site
+// (the review queue's two pickers) wants accomplishment-only and reads
+// more clearly naming that directly than passing the default by omission.
+export async function searchAccomplishmentClaims(query: string, excludeId?: string): Promise<ClaimSearchResult[]> {
+  return searchApprovedClaims(query, excludeId, 'accomplishment');
 }

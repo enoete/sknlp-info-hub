@@ -129,6 +129,12 @@
   font-family: 'Barlow Semi Condensed', sans-serif;
   font-size: 12px;
 }
+.interpretedAs {
+  font-size: 11px;
+  color: var(--faint);
+  font-style: italic;
+  margin: 0 0 6px;
+}
 .noRecord {
   border: 1px dashed var(--faint);
   border-radius: 8px;
@@ -242,6 +248,15 @@
 .chatInputRow button:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.newTopicLink {
+  color: var(--faint);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.newTopicLink:hover {
+  color: var(--ink);
 }
 
 .privacyNote {

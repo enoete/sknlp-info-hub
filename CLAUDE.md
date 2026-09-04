@@ -769,6 +769,7 @@ built, not from memory. Two valid states only:
 | `suggestion_themes`, `citizen_suggestions`, `suggestion_acknowledgements` (tables) — see "Suggest a Priority" below | ✅ Migrated | 2026-08-31 |
 | `claims.manual_clarification_id` (admin-linked clarification claim) | ✅ Migrated | 2026-08-31 |
 | `claims.manual_clarification_title`, `_text`, `_url` (admin-written clarification — see "UI overhaul, demo-readiness cleanup" below) | ✅ Migrated | 2026-09-01 |
+| `chat_queries.is_suggestion`, `feedback_rating`, `feedback_context`, `feedback_claim_id`, `feedback_correction_title`/`_text`/`_url`, `feedback_reviewed_at`, `feedback_reviewed_by` (admin answer-quality feedback loop — see "Chatbot answer-quality feedback loop" below) | ✅ Migrated | 2026-09-04 |
 
 One-time full audit completed 2026-08-31, prompted by the `chat_queries`
 gap: every table and column in `schema.sql` cross-checked
@@ -1612,6 +1613,350 @@ scheduler.
   rendered — `DashboardClient.tsx` now shows "documented with N
   independent sources" next to the citation whenever a claim has more
   than one, same wording already used on the claim detail page.
+
+## Dashboard duplicate found live, sources modal, and a real YouTube RSS breakage (2026-09-01)
+
+Prompted directly by the client spotting a live duplicate on the
+Dashboard: two separate claims for the same 37 Taiwan scholarships —
+"Awarding of 37 Taiwan University Scholarships for 2026 Cohort" (ZIZ, 3
+sources) and "Awarding of 2026 Taiwan Scholarships" (SKNIS) — plus a
+request to make the "documented with N independent sources" text
+clickable, and a direct question about whether Straight Talk's newest
+episode had actually been scraped.
+
+**Root cause of the duplicate: both claims were bulk-seeded/backfilled
+directly into the DB, never passed through `ingest_one_video()`/
+`ingest_one_article()`.** Confirmed by finding dozens of claims sharing
+the exact same `created_at` timestamp down to the microsecond (batch
+`INSERT`s, not live ingestion) — `claim_dedup.find_matching_approved_claim()`
+only ever runs inside those two write paths, so anything inserted
+another way (the original 113-item seed, subsequent backfill scripts)
+never had a chance to be checked against the rest of the corpus at
+insert time. This specific pair was merged by hand (`merge_claim()`,
+ZIZ's claim kept as canonical since it already had more sources; SKNIS's
+source relinked, not dropped).
+
+**A second, more important root cause: `backfill_dedup.py`'s own
+0.45 trigram-similarity threshold missed this pair outright** — real
+computed `similarity()` on title+summary combined was only 0.28, well
+under the bulk sweep's floor, because the two extraction passes
+paraphrased the event quite differently ("37 university
+scholarships...largest single-year cohort" vs. "Thirty-seven
+students...formal recognition ceremony"). Fed both texts directly to
+the same-claim LLM check on their own — it returned `true` immediately.
+This is the exact same failure mode already hit once before in this
+project for a different feature (see "Suggest a Priority"'s clustering
+bugs above): trigram overlap is a good cheap filter only when two texts
+share verbatim entity names/dollar figures, and a bad one when they're
+independently paraphrased.
+
+**Fix: a second, narrower sweep, not a lower global threshold.**
+Lowering `BULK_MIN_SIMILARITY` globally was already measured as
+infeasible (11,550 candidate pairs at 0.2 against ~600 claims — hours of
+LLM calls on a droplet that runs one Gemini call at a time). Instead,
+`ingestion/backfill_dedup_recent.py` narrows the OTHER axis: only claims
+created recently (`--since-days`, default 3) get checked, but against
+the FULL corpus, reusing `claim_dedup.find_matching_approved_claim()`'s
+own lower `MIN_SIMILARITY=0.2` — the exact function/threshold already
+trusted for the live per-claim path. This is the retroactive equivalent
+of that live check, for claims that bypassed it entirely. Same
+auto-apply safety posture as `backfill_dedup.py` (never deletes a
+source/citation, only relinks and rejects the duplicate — not the same
+risk class as `audit_scope_integrity.py`'s reject call, which stays
+human-reviewed-only). `scripts/run_dedup_sweep.sh`'s cron entry (0 4 UTC
+daily, installed 2026-09-01) now runs both stages: `backfill_dedup.py
+--apply` (all-pairs, 0.45, catches verbatim-overlap dupes) then
+`backfill_dedup_recent.py --since-days 1 --apply` (recent-vs-all, 0.2,
+catches paraphrased dupes among newly-ingested claims). A one-off wider
+catch-up run (`--since-days 2`, covering the whole recent seeding/
+backfill session) was launched detached (`setsid nohup ... & disown`,
+per the existing rule) to clear the current backlog — check its log
+(`/root/sknlp-info-hub-logs/dedup_recent_catchup_*.log`) for what it
+found; steady-state daily runs will be far cheaper since only that
+day's actually-new claims fall in the 1-day window.
+
+**Sources modal, built**: `DashboardClaim`'s "documented with N
+independent sources" text is now a real button
+(`app/DashboardClient.tsx`'s `SourcesModal`) that fetches every linked
+source for that claim (`getClaimSources()` in `app/lib/claims.ts`, new
+`GET /api/claims/[id]/sources`) and shows them as cards — org, title,
+speaker if known, date, each linking out to its own origin URL (with a
+per-source timestamp deep link where one exists, same
+`compute_segment_window`-derived pattern as the card's own citation).
+Fetched on click, not bundled into the initial Dashboard payload — most
+claims have exactly one source, so eagerly fetching every claim's full
+source list on every page load would be pure waste for the common case.
+
+**Real infrastructure finding, while investigating the Straight Talk
+question: YouTube's public RSS feed (`/feeds/videos.xml`) is dead.**
+Every registered YouTube source's scheduled discovery had been silently
+failing — a manual run of `run_scheduled_discovery.py` logged
+`HTTP Error 404: Not Found` for all 9 youtube-platform sources at once.
+Confirmed this is a real, upstream break, not a bug in this project's
+URL-building or a network/proxy issue on the droplet: `curl` against the
+feed for YouTube's own official channel ID (not just our registered
+ones) returns 404 with the response header `server: YouTube RSS Feeds
+server` — a genuine answer from YouTube's own infrastructure. Same
+category of external-dependency shift already tracked elsewhere in this
+project (Azure/Amazon's speaker-recognition retirements — see "Speaker
+identification" above). This explains the Straight Talk question
+directly: the channel's actual newest episode ("THE 3 HATS OF BRANTLEY,"
+Aug 31 2026) had never been ingested — not because discovery hadn't run
+recently, but because the mechanism it depends on had quietly stopped
+working entirely, and the one earlier manual test run that touched
+Straight Talk's `last_checked_at` timestamp was actually the (separate,
+RSS-independent) historical backfill process pulling old 2023 content,
+not a check for new uploads.
+
+**Fixed**: `discover_channel.py`'s `fetch_channel_videos()` (used by
+`run_channel_discovery.py`/`run_scheduled_discovery.py` for "what's
+new," as opposed to the historical-backfill path) switched from the
+dead Atom feed to `yt-dlp` against the channel's uploads playlist in
+flat mode — the exact same mechanism `find_historical_candidates()`
+already uses and already proved live against ZIZ/PLP/Straight Talk.
+Capped to the first 15 entries to match the old feed's own "~15 most
+recent" behavior. No per-video upload-date metadata in flat mode, so
+`published_at` is best-effort via the same `parse_date_from_title()`
+already relied on for backfill; an unparsed title falls through to
+`in_scope(None)` (treated as in-scope) same as always, letting Gemini's
+own extraction-time scope rule be the backstop. Verified live against
+Straight Talk post-fix: correctly returns the real Aug 31 episode with a
+correctly-parsed date. Relaunched `run_scheduled_discovery.py` detached
+with the fix in place across all 13 eligible sources — check
+`/root/sknlp-info-hub-logs/manual_discovery_fixed_*.log` for what it
+picked up, including whether the new Straight Talk episode was
+successfully extracted.
+
+**Not yet done**: `resolve_channel_id()`'s handle-resolution step (a
+different endpoint — scrapes the channel page's own canonical `<link>`)
+was independently re-verified working live and left untouched, but
+wasn't stress-tested beyond one channel; worth a broader spot-check if
+discovery starts failing again in a way that doesn't match this fix. The
+detached catch-up dedup sweep and the detached fixed discovery run were
+both still in progress when this was written — their log files are the
+source of truth for what they actually found, not this entry.
+
+## Category taxonomy expansion, and a real multi-hour transaction-locking bug (2026-09-01)
+
+Prompted by the new `gov.kn/national-accomplishments` source (see above),
+which has its own "Sports & Entertainment" sector page with no honest
+category to land in. Investigated the existing 'Other' bucket (36 claims)
+and a targeted IT/digital-content sweep before proposing anything, per
+explicit instruction to present findings before acting. User decision,
+given directly: split Sports out as its own category; merge Culture and
+Entertainment into one (`Culture & Entertainment` — not enough
+distinctly-entertainment content yet to justify a separate slot); add
+Environment and Infrastructure as their own categories; add
+`Information Technology & Digital Governance` for e-government/digital-ID/
+civic-tech content where the technology itself is the story (eTA, SMARTS
+tax system, national eID, biometric passports) — explicitly **not** for
+digital tools inside another sector's own delivery (a digital health
+records system stays `Healthcare`, a digital social-security account
+stays `Social Protection`).
+
+`CATEGORIES` (`ingestion/extract_from_video.py`, mirrored in
+`app/lib/categories.ts`) grew from 12 to 17. Four new entries added to
+`app/lib/categoryColors.ts`'s `CATEGORY_COLORS`, validated the same way
+the original 11-hue palette was (dataviz skill's `validate_palette.js` —
+lightness band, chroma floor, CVD separation, WCAG contrast ≥4.5:1)
+against the categories they actually render adjacent to (`DashboardClient`
+sorts category pills alphabetically, so "adjacent" means alphabetical
+neighbor, not insertion order) — the same adjacent-only standard the
+original palette itself was validated against, not a stricter one; 15+
+categorical hues has no ordering that clears full all-pairs CVD
+separation, confirmed by the fact that the pre-existing 11-hue palette
+itself already fails all-pairs (e.g. Agriculture vs Social Protection ΔE
+1.4) despite having shipped that way already.
+
+**Full-corpus reclassification**: `ingestion/backfill_category.py`, same
+batched-Gemini pattern as the other backfill scripts, run against all
+1,214 approved/pending claims (not just the categories known to be
+affected), each claim's *current* category given as context but not
+assumed correct. Applied 2026-09-01: **134 of 1,214 claims changed
+category** — Environment 37, Culture & Entertainment 33, Infrastructure
+19, Sports 19, Information Technology & Digital Governance 13 (the rest
+were already correctly categorized, mostly moving out of `Other` and
+`Governance`, which had been silently absorbing this content before
+today).
+
+**Real bug found and fixed the same day, worth remembering**: the 134
+category changes finished classifying (per the script's own log) hours
+before the user actually saw any of them live — because the single
+`UPDATE` transaction covering all 134 rows was silently blocked the
+entire time by an unrelated background job. `ingestion/backfill_dedup_recent.py`
+(the dedup catch-up sweep, running concurrently per this project's
+established "several long jobs at once" pattern) only called
+`conn.commit()` once, at the very end of its whole run — so an early
+`merge_claim()` UPDATE it made shortly after starting stayed uncommitted,
+holding a row lock, for the entire rest of its multi-hour run. When
+`backfill_category.py`'s own UPDATE happened to hit that same row, it
+blocked on `pg_locks`' `transactionid` wait for **3.5+ hours** with zero
+error output on either side — both processes looked "just slow," not
+stuck, until directly diagnosed via `pg_stat_activity`
+(`state='idle in transaction'` on the dedup process, `wait_event_type='Lock'`
+on the category process) and a `pg_locks` join identifying the exact
+blocking chain. Fixed two ways: killed the stuck dedup process (safe —
+an uncommitted transaction rolls back cleanly on disconnect, no data
+lost, just that run's progress needing a rerun), and fixed the actual
+root cause — `backfill_dedup_recent.py` now calls `conn.commit()` after
+every individual merge, not once at the end. Each merge is already a
+complete, independent unit of work; there was never a correctness reason
+to bundle an entire multi-hour run's worth of merges into one long-lived
+transaction, only a latent one waiting to collide with something else.
+**General lesson for this project specifically**: multiple detached,
+long-running, DB-writing background jobs are now a routine, deliberate
+pattern here (ingestion, dedup sweeps, discovery) — any script in that
+category needs to commit incrementally, not in one all-or-nothing
+transaction at the end, or it risks silently blocking a completely
+unrelated job the same way this one did.
+
+**Second, separate gap caught during the same check**: the app container
+running in production had been built *before* the `categories.ts`/
+`categoryColors.ts` code changes landed — so even once the DB-side
+transaction lock was fixed, the live site would still have kept
+rendering the old 12-category taxonomy. Rebuilt and redeployed
+(`docker compose build app && docker compose up -d app`); verified live
+against the real deployed site (`curl https://sknlphub.tekii.org/`) that
+all 5 new category names now render. **Operational note**: running
+`docker compose up` without first loading `.env.local`'s environment
+variables into the shell (`DB_PASSWORD`, `APP_HOST_PORT`) silently
+recreates the `db` container too and drops the app's port mapping to a
+random host port (breaking nginx's fixed-port proxy) — caught and fixed
+immediately by re-running with the env file's variables exported first;
+the underlying named volume (`sknlp_hub_pgdata`) meant no data was lost
+in the `db` recreate either way, confirmed via a live row count
+(1,355 claims, unchanged) before and after.
+
+## Ask the Record: last-turn follow-up context (built 2026-09-04, undocumented until now)
+
+Prompted directly, after the client asked whether the chatbot was "truly
+conversational" — it wasn't: every question hit `retrieve()` and the
+answer-generation call completely independently, so "when did that
+happen?" right after a real answer searched literally on the words
+"when"/"did"/"that"/"happen" and found nothing. Fixed narrowly on
+purpose: only the SINGLE immediately-preceding turn (question + the
+answer's claim title/summary) is ever carried forward — overwritten
+every turn, never accumulated into a running history — specifically to
+avoid one stale topic bleeding into an unrelated later question. This
+was built and deployed before the section below and should have been
+documented at the time; caught only when writing up the feedback-loop
+work that follows. No schema change — all client-side state
+(`ChatClient.tsx`'s `lastTurn`) plus two request fields.
+
+- `app/lib/retrieve.ts`'s `rewriteFollowUpQuestion()` — a cheap Haiku
+  call (plain text, not tool-use) that rewrites an ambiguous follow-up
+  into a standalone search query using only the previous turn's own
+  title/summary as context, never inventing a fact not already present
+  in either. Fails OPEN (returns the question unchanged) on any missing
+  key/error/empty response — a failed rewrite just means this behaves
+  exactly as it did before the feature existed. Deliberately does NOT
+  touch the actual grounding/citation-validation logic in `route.ts` at
+  all — it only changes what string gets searched and shown to the
+  model as "the question," never weakens the citation-must-match-a-
+  retrieved-row check.
+- `app/api/ask/route.ts` accepts optional `previous_question`,
+  `previous_claim_title`, `previous_summary` in the request body; when
+  present, the rewritten question is what's actually sent to
+  `retrieve()` and to the answer-generation model, while the raw
+  `question` is still what's logged to `chat_queries` (see below) so
+  "most asked questions" stays natural human wording, not a synthesized
+  rephrasing.
+- `app/ask/ChatClient.tsx` shows a small "Read as a follow-up —
+  searched for: '...'" caption whenever a rewrite happened (transparency,
+  same posture as the existing `retrieved_titles` debug field), and a
+  "Start a new topic" link to manually clear `lastTurn` and force the
+  next question to stand on its own.
+- Verified live 2026-09-04 with three cases: a first-turn baseline
+  (`rewritten_question: null`, unaffected), a real pronoun follow-up
+  ("when did that happen?" after a Cayon water question, correctly
+  resolved and honestly answered that the completion date isn't
+  documented), and a deliberately unrelated follow-up sent alongside
+  stale prior context (correctly left unchanged, no topic bleed).
+
+## Chatbot answer-quality feedback loop (built 2026-09-04)
+
+Prompted directly: an admin-facing log of every question asked, with a
+three-way rating (not answered / partially answered / fully answered),
+optional admin context on a partial miss to guide future retrieval, a
+way to click-track which pre-filled suggestion pills actually get used,
+and a path for an admin to manually find (or, failing that, write) the
+correct answer when the bot missed. New page: `/chat-feedback`
+(`app/chat-feedback/`), linked from the Internal nav group.
+
+- **Suggestion-click tracking.** `chat_queries.is_suggestion` — set
+  by the client (`ChatClient.tsx`'s `ask(question, isSuggestion)`, `true`
+  only when a suggestion pill's `onClick` fired it, `false` for anything
+  typed into the input box) — not inferred server-side, since the server
+  has no way to tell a typed question from a clicked one apart from what
+  the client reports. `getMostClickedSuggestions()` groups on the exact
+  question text (a pill's label IS the logged question) and backs the
+  page's "Most-clicked suggestions" panel.
+- **Three-way rating + guidance note.** `chat_queries.feedback_rating`
+  (`not_answered` / `partially_answered` / `fully_answered`) and
+  `feedback_context` — the admin's free-text note on what the engine
+  should have searched for, shown only for the `partially_answered` case
+  per the client's own framing ("context is just to be used by the
+  engine to guide it better on what to REALLY search for"). This is
+  wired into actual retrieval, not just stored for record-keeping:
+  `getAdminSearchHint()` in `app/lib/chatQueries.ts` does a `pg_trgm`
+  similarity lookup (not an LLM call — this runs on every single
+  question asked, unlike the one-time admin review that wrote the hint)
+  against past reviewed questions with a saved `feedback_context`, and
+  `route.ts` appends a match to the text actually sent to `retrieve()`
+  (never to what the model is told the question was, so this can only
+  broaden recall, never change what a visitor is shown as their own
+  question). Verified live: reviewing a "minimum wage" question with a
+  guidance note, then re-asking the identical question, correctly
+  returned `admin_hint_applied: true` on the second ask.
+  **Known gap, not hidden**: two citizens rarely phrase the same missed
+  topic identically, so trigram similarity only reliably catches a
+  near-identical re-ask, not a true paraphrase. An LLM-based semantic
+  match would catch more but adds real latency/cost to every question
+  asked, not just the ones with a hint available — deferred, revisit if
+  admin-curated hints accumulate and paraphrase-misses turn out to be
+  common in practice.
+- **Find-or-write the correct answer.** `chat_queries.feedback_claim_id`
+  (an admin searches and links an existing approved claim — reuses
+  `/api/claims/search`, generalized with a new `stance=any` query param
+  since a chatbot answer can cite either an accomplishment or an
+  opposition claim, where the review queue's existing pickers stay
+  `stance=accomplishment`-only by default) or, when nothing in the
+  archive covers it, `feedback_correction_title`/`_text`/`_url` — an
+  admin writes the correct answer directly with a required source URL.
+  Same mutually-exclusive linked-claim-vs-written-text mechanism, same
+  citation-required posture, as `claims.manual_clarification_id` vs.
+  `manual_clarification_title`/`_text`/`_url` (see "UI overhaul,
+  demo-readiness cleanup" above) — reused deliberately rather than
+  inventing a third pattern, and for the same reason: a real past match
+  often doesn't already exist as its own ingested claim.
+  **Deliberately NOT wired into live answers**: linking or writing a
+  correction here only records what an admin found — it doesn't make
+  the chatbot start citing it automatically. Doing that safely would
+  need the same real-relevance judgment already built for Opposition
+  Watch's `isGenuinelyRelevant()` (see "Record-pairing relevance floor"
+  above), not a blind keyword match; out of scope for this pass, flagged
+  here rather than silently assumed to already work.
+- **Admin identity**: `feedback_reviewed_by` is a free-text name field,
+  same maturity level as `suggestion_acknowledgements.acknowledged_by`
+  — no real admin auth exists anywhere in this app yet.
+- **Anonymity promise preserved**: every new column stays NULL until an
+  admin reviews a row by hand — this is an admin's own judgment on an
+  already-anonymous logged question, not new data collected about the
+  person who asked it. `chat_queries`' own no-IP/session/identity-signal
+  comment in `schema.sql` still holds; re-checked before adding anything
+  here, per that comment's own instruction.
+- **Mistake made and corrected while building this**: while cleaning up
+  synthetic test rows created during live verification, a `DELETE ...
+  WHERE id IN (...)` built from a "3 most recent rows" query
+  accidentally included one real, pre-existing logged question (not
+  created during testing) alongside the two actual test rows. It wasn't
+  in the same-day 02:30 backup (logged after that backup ran), so it
+  was unrecoverable in its original form; reinserted an approximate copy
+  (same question text and `found` value) since no original `claim_id` or
+  timestamp was captured before deletion. Lesson for next time: capture
+  exact ids at insert time (e.g. via each write's own `RETURNING id`) for
+  any live test-data cleanup, never rely on recency as a proxy for "rows
+  I created" on a table with concurrent real writes.
 
 ## What can be mocked/stubbed for the demo, what can't
 

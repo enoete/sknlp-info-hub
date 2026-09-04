@@ -416,11 +416,51 @@ CREATE TABLE chat_queries (
     question    TEXT NOT NULL,
     found       BOOLEAN NOT NULL,
     claim_id    UUID REFERENCES claims(id),  -- the claim actually cited back; null when found=false
+    -- True when this question was asked by clicking a pre-filled
+    -- suggestion pill (a starting suggestion or a follow-up) rather than
+    -- typed by hand — lets the admin feedback log below show which
+    -- suggestions actually get used. Set by the client (ChatClient.tsx),
+    -- not inferred server-side.
+    is_suggestion BOOLEAN NOT NULL DEFAULT false,
+    -- ------------------------------------------------------------
+    -- ADMIN ANSWER-QUALITY FEEDBACK LOOP (decided 2026-09-04). See
+    -- CLAUDE.md's "Chatbot answer-quality feedback loop" section and
+    -- app/chat-feedback/. None of this is populated by a citizen or
+    -- collected automatically — every column below stays NULL until an
+    -- admin reviews the row by hand (feedback_reviewed_at IS NULL means
+    -- "not yet reviewed"), so it doesn't touch the no-identity-signal
+    -- promise made above: this is an admin's own judgment about an
+    -- already-anonymous question, not new data collected about the
+    -- person who asked it.
+    -- ------------------------------------------------------------
+    feedback_rating            TEXT CHECK (feedback_rating IN ('not_answered', 'partially_answered', 'fully_answered')),
+    -- Admin's free-text note on what the engine should have searched for
+    -- instead — fed back into retrieval for a future similarly-worded
+    -- question via getAdminSearchHint() in app/lib/chatQueries.ts, not
+    -- just stored for record-keeping.
+    feedback_context            TEXT,
+    -- The actually-correct claim, if an admin found one via search.
+    -- Mutually exclusive with feedback_correction_* below — same
+    -- linked-claim-vs-written-text posture as claims.manual_clarification_id
+    -- vs. manual_clarification_title/_text/_url, and for the same reason
+    -- (a real past match often doesn't exist as its own ingested claim).
+    feedback_claim_id           UUID REFERENCES claims(id),
+    feedback_correction_title   TEXT,
+    feedback_correction_text    TEXT,
+    feedback_correction_url     TEXT,  -- required whenever _title/_text are set — never store an unsourced correction
+    feedback_reviewed_at        TIMESTAMPTZ,
+    feedback_reviewed_by        TEXT,  -- free-text admin name, same maturity level as suggestion_acknowledgements.acknowledged_by — no real admin auth yet
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Matches the exact "most-asked, found=true" query in suggestions.ts.
 CREATE INDEX idx_chat_queries_found_question ON chat_queries (question) WHERE found = true;
+-- Backs getMostClickedSuggestions()'s "which pre-filled questions get
+-- clicked most" admin panel.
+CREATE INDEX idx_chat_queries_suggestion_question ON chat_queries (question) WHERE is_suggestion = true;
+-- Backs getAdminSearchHint()'s pg_trgm similarity lookup (pg_trgm is
+-- already ✅ Migrated live, see CLAUDE.md's schema status table).
+CREATE INDEX idx_chat_queries_question_trgm ON chat_queries USING gin (question gin_trgm_ops);
 
 -- ------------------------------------------------------------
 -- SUGGEST A PRIORITY: anonymous public suggestion box + admin

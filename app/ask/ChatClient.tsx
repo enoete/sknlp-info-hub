@@ -21,6 +21,7 @@ interface AskResponse {
   no_record_message?: string;
   retrieval_count?: number;
   retrieved_titles?: string[];
+  rewritten_question?: string | null;
   follow_up_suggestions?: string[];
   error?: string;
 }
@@ -30,6 +31,18 @@ interface ChatMessage {
   question?: string;
   answer?: AskResponse;
   errorText?: string;
+}
+
+// Follow-up support: only the SINGLE immediately-preceding turn is ever
+// carried forward and sent back to the server (see retrieve.ts's
+// rewriteFollowUpQuestion) -- overwritten every turn, never accumulated
+// into a running history. This is what lets "when did that happen?"
+// resolve against the previous answer's topic instead of searching on
+// literally "when did that happen".
+interface LastTurn {
+  question: string;
+  claim_title: string | null;
+  summary: string | null;
 }
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
@@ -58,6 +71,7 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
   // suggestion pill is ever shown that wasn't derived from a real claim.
   const [currentSuggestions, setCurrentSuggestions] = useState<string[]>(suggestions);
   const [thinkingPhraseIdx, setThinkingPhraseIdx] = useState(0);
+  const [lastTurn, setLastTurn] = useState<LastTurn | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Runs on every new message AND on the loading flag, so the thinking
@@ -80,7 +94,7 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
     return () => clearInterval(id);
   }, [loading]);
 
-  async function ask(question: string) {
+  async function ask(question: string, isSuggestion = false) {
     if (!question.trim() || loading) return;
     setInput('');
     setMessages((m) => [...m, { role: 'user', question }]);
@@ -89,7 +103,17 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question })
+        body: JSON.stringify({
+          question,
+          is_suggestion: isSuggestion,
+          ...(lastTurn
+            ? {
+                previous_question: lastTurn.question,
+                previous_claim_title: lastTurn.claim_title,
+                previous_summary: lastTurn.summary
+              }
+            : {})
+        })
       });
 
       let data: any;
@@ -115,6 +139,11 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
         if (data.follow_up_suggestions?.length > 0) {
           setCurrentSuggestions(data.follow_up_suggestions);
         }
+        setLastTurn({
+          question,
+          claim_title: data.claim_title ?? null,
+          summary: data.summary ?? null
+        });
       }
     } catch (err) {
       // Network-level failure (connection dropped, DNS, etc.) — same
@@ -155,6 +184,11 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
                   <div className={styles.errorBox}>Error: {m.errorText}</div>
                 ) : m.answer?.found ? (
                   <div className={styles.answerCard}>
+                    {m.answer.rewritten_question && (
+                      <p className={styles.interpretedAs}>
+                        Read as a follow-up — searched for: &ldquo;{m.answer.rewritten_question}&rdquo;
+                      </p>
+                    )}
                     <span
                       className={`${styles.aStance} ${
                         m.answer.stance === 'opposition_statement'
@@ -179,6 +213,11 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
                   </div>
                 ) : (
                   <div className={styles.answerCard}>
+                    {m.answer?.rewritten_question && (
+                      <p className={styles.interpretedAs}>
+                        Read as a follow-up — searched for: &ldquo;{m.answer.rewritten_question}&rdquo;
+                      </p>
+                    )}
                     <div className={styles.noRecord}>
                       {m.answer?.no_record_message ||
                         "I don't have an official record of that in the archive."}
@@ -203,7 +242,7 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
 
         <div className={styles.suggestionRow}>
           {currentSuggestions.map((s) => (
-            <span key={s} className={styles.suggestion} onClick={() => ask(s)}>
+            <span key={s} className={styles.suggestion} onClick={() => ask(s, true)}>
               {s}
             </span>
           ))}
@@ -227,6 +266,14 @@ export default function ChatClient({ suggestions }: { suggestions: string[] }) {
         </form>
         <div className={styles.privacyNote}>
           Nothing you ask here is linked to your identity — ask freely.
+          {lastTurn && (
+            <>
+              {' · '}
+              <span className={styles.newTopicLink} onClick={() => setLastTurn(null)}>
+                Start a new topic
+              </span>
+            </>
+          )}
         </div>
       </div>
     </>
