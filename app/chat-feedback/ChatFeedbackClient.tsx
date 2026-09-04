@@ -43,7 +43,7 @@ type OriginFilter = 'all' | 'suggestion' | 'typed';
 
 const ORIGIN_TABS: { value: OriginFilter; label: string }[] = [
   { value: 'all', label: 'All questions' },
-  { value: 'suggestion', label: 'Pre-filled suggestions' },
+  { value: 'suggestion', label: 'Pre-Filled Suggested Questions' },
   { value: 'typed', label: 'Typed by visitor' }
 ];
 
@@ -333,7 +333,7 @@ export default function ChatFeedbackClient({
             <div key={r.id} className={`${styles.card} ${r.is_suggestion ? styles.cardSuggestion : styles.cardTyped}`}>
               <div className={styles.metaRow}>
                 {r.is_suggestion ? (
-                  <span className={`${styles.tag} ${styles.tagSuggestion}`}>◆ Pre-filled suggestion</span>
+                  <span className={`${styles.tag} ${styles.tagSuggestion}`}>◆ Pre-Filled Suggested Question</span>
                 ) : (
                   <span className={`${styles.tag} ${styles.tagTyped}`}>⌨ Typed by visitor</span>
                 )}
